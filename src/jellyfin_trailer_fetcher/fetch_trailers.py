@@ -136,12 +136,63 @@ def is_non_latin(text):
     return bool(re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]', text))
 
 
+def clean_media_title(title):
+    """
+    Clean raw media title/filename of scene release tags, track numbers, codecs, and brackets,
+    and extract year if present.
+    """
+    if not title:
+        return "", None
+
+    # 1. Remove bracketed release info: [...], {...}
+    s = re.sub(r'\[.*?\]|\{.*?\}', ' ', title)
+
+    # 2. Extract year (1900-2099) if present in parentheses or as standalone 4-digit number
+    year = None
+    year_match = re.search(r'[\(\[]\s*(19\d{2}|20\d{2})\s*[\)\]]', title)
+    if year_match:
+        year = year_match.group(1)
+        s = re.sub(r'[\(\[]\s*' + year + r'\s*[\)\]]', ' ', s)
+    else:
+        # Check standalone 4-digit year bounded by delimiters or whitespace
+        stand_match = re.search(r'(?:^|[\s._\-(])(19\d{2}|20\d{2})(?:$|[\s._\-)])', s)
+        if stand_match:
+            year = stand_match.group(1)
+            s = s[:stand_match.start(1)] + " " + s[stand_match.end(1):]
+
+    # 3. Strip leading track/episode/disc numbers: e.g. "01 ", "02 - ", "1. ", "01. ", "01_"
+    s = re.sub(r'^\s*0*\d{1,3}\s*[\.\-_]\s*', '', s)
+    s = re.sub(r'^\s*0*\d{1,3}\s+', '', s)
+
+    # 4. Remove common scene / release / quality / audio noise keywords
+    noise_patterns = [
+        r'\b(720p|1080p|1080i|2160p|4k|uhd|hd|sd|480p|360p)\b',
+        r'\b(h264|h265|x264|x265|hevc|av1|xvid|divx|10bit|8bit)\b',
+        r'\b(aac|ac3|dts|dts-hd|truehd|atmos|flac|mp3|ddp|dd5\.1|5\.1)\b',
+        r'\b(bluray|blu-ray|bdrip|brrip|web-dl|webrip|web|dvdrip|dvd|hdtv|remux)\b',
+        r'\b(eng|jpn|ger|fra|spa|ita|multi|subs?|dub|dual audio|subbed|dubbed)\b',
+        r'\b(animation|anime)\b',
+        r'\b(mp4|mkv|avi|vob|iso)\b',
+    ]
+    for np in noise_patterns:
+        s = re.sub(np, ' ', s, flags=re.IGNORECASE)
+
+    # 5. Clean up stray punctuation and collapse whitespace
+    s = re.sub(r'[_\.]', ' ', s)
+    s = re.sub(r'\s*-\s*$', '', s)
+    s = re.sub(r'^\s*-\s*', '', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+
+    return s, year
+
+
 def extract_main_title(title):
     """
     Extract clean title without year, primary main title (before subtitle separators),
     and primary first word for fuzzy matching.
     """
-    clean = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip()
+    clean_t, _ = clean_media_title(title)
+    clean = clean_t if clean_t else title
     # Split by subtitle delimiters: ' - ', ' : ', ' – ', ' — ', ' / ', ' | '
     parts = re.split(r'\s+[-–—:|/]\s+|\s*[:/]\s*', clean)
     main = parts[0].strip() if parts else clean
@@ -162,26 +213,33 @@ def resolve_movie_titles(movie, local_path=""):
     if local_path:
         base = os.path.basename(local_path)
         stem = os.path.splitext(base)[0]
-        file_stem = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', stem).strip()
+        file_stem = stem
+
+    # Clean the raw title, original title, and file stem of scene tags
+    cleaned_name, _ = clean_media_title(raw_name)
+    cleaned_orig, _ = clean_media_title(original_title)
+    cleaned_stem, _ = clean_media_title(file_stem)
+
+    name_cand = cleaned_name or raw_name
+    orig_cand = cleaned_orig or original_title
+    stem_cand = cleaned_stem or file_stem
 
     # Preferred title for display and file naming:
-    # If raw_name is Latin, use it. If raw_name is non-Latin (e.g. Japanese Kanji),
-    # prefer Latin original_title or existing Latin filename.
-    if not is_non_latin(raw_name):
-        preferred_title = raw_name
-    elif original_title and not is_non_latin(original_title):
-        preferred_title = original_title
-    elif file_stem and not is_non_latin(file_stem):
-        preferred_title = file_stem
+    if not is_non_latin(name_cand):
+        preferred_title = name_cand
+    elif orig_cand and not is_non_latin(orig_cand):
+        preferred_title = orig_cand
+    elif stem_cand and not is_non_latin(stem_cand):
+        preferred_title = stem_cand
     else:
-        preferred_title = raw_name
+        preferred_title = name_cand
 
     # Collect title variants for query generation and filter cross-checks
     title_variants = []
     if not is_non_latin(preferred_title):
-        ordered_candidates = [preferred_title, original_title, file_stem, raw_name]
+        ordered_candidates = [preferred_title, orig_cand, stem_cand, raw_name]
     else:
-        ordered_candidates = [raw_name, original_title, file_stem]
+        ordered_candidates = [raw_name, orig_cand, stem_cand, preferred_title]
 
     for t in ordered_candidates:
         if t and t not in title_variants:
@@ -239,6 +297,11 @@ def get_trailer_sources(movie, local_path=""):
     year = movie.get("ProductionYear")
     if not year and movie.get("PremiereDate"):
         year = movie.get("PremiereDate")[:4]
+
+    if not year and local_path:
+        _, ext_yr_name = clean_media_title(movie.get("Name", ""))
+        _, ext_yr_file = clean_media_title(os.path.basename(local_path))
+        year = ext_yr_name or ext_yr_file
 
     remote_trailers = movie.get("RemoteTrailers", [])
     sources_to_try = []
@@ -436,6 +499,11 @@ def process_movie(movie, args, state, config):
     year = movie.get("ProductionYear")
     if not year and movie.get("PremiereDate"):
         year = movie.get("PremiereDate")[:4]
+
+    if not year and local_path:
+        _, ext_yr_name = clean_media_title(movie.get("Name", ""))
+        _, ext_yr_file = clean_media_title(os.path.basename(local_path))
+        year = ext_yr_name or ext_yr_file
     
     year_str = f" ({year})" if year else ""
     safe_title = sanitize_filename(f"{preferred_title}{year_str}")

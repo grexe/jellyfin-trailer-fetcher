@@ -13,6 +13,7 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     sanitize_filename,
     is_valid_media_file,
     is_non_latin,
+    clean_media_title,
     extract_main_title,
     resolve_movie_titles,
     get_trailer_sources,
@@ -76,6 +77,19 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         self.assertFalse(is_non_latin("DAKAICHI"))
         self.assertFalse(is_non_latin("Gokiburi-tachi no Tasogare"))
 
+    def test_clean_media_title(self):
+        t1, y1 = clean_media_title("01 Vampire Hunter D - Animation 1985 Eng Jpn Multi Subs 720p [H264-mp4]")
+        self.assertEqual(t1, "Vampire Hunter D")
+        self.assertEqual(y1, "1985")
+
+        t2, y2 = clean_media_title("02 Vampire Hunter D Bloodlust - Animation 2000 Eng Jpn Multi Subs 720p [H264-mp4]")
+        self.assertEqual(t2, "Vampire Hunter D Bloodlust")
+        self.assertEqual(y2, "2000")
+
+        t3, y3 = clean_media_title("DAKAICHI - Im being harassed by the sexiest man of the year (2024)")
+        self.assertEqual(t3, "DAKAICHI - Im being harassed by the sexiest man of the year")
+        self.assertEqual(y3, "2024")
+
     def test_extract_main_title(self):
         clean, main, first_w = extract_main_title("DAKAICHI - Im being harassed by the sexiest man of the year (2024)")
         self.assertEqual(clean, "DAKAICHI - Im being harassed by the sexiest man of the year")
@@ -91,8 +105,16 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         self.assertEqual(clean, "ギヴン うらがわの存在")
         self.assertEqual(first_w, "ギヴン")
 
+    def test_resolve_movie_titles_scene_release(self):
+        movie = {
+            "Name": "01 Vampire Hunter D - Animation 1985 Eng Jpn Multi Subs 720p [H264-mp4]",
+            "OriginalTitle": ""
+        }
+        preferred, variants = resolve_movie_titles(movie, "/path/01 Vampire Hunter D.mp4")
+        self.assertEqual(preferred, "Vampire Hunter D")
+        self.assertIn("Vampire Hunter D", variants)
+
     def test_resolve_movie_titles_latin_preservation(self):
-        # Japanese name in Jellyfin, but Latin file on disk
         movie = {
             "Name": "ギヴン うらがわの存在",
             "OriginalTitle": ""
