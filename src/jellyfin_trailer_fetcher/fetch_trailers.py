@@ -24,10 +24,6 @@ VIDEO_EXTENSIONS = {
     '.webm', '.ts', '.m2ts', '.iso', '.vob'
 }
 
-IGNORED_NAME_PATTERNS = [
-    '-trailer', '.trailer', '_trailer',
-    'sample', '.sample', 'cover', 'poster', 'fanart'
-]
 
 class YoutubeDownloaderLogger:
     def debug(self, msg):
@@ -126,7 +122,15 @@ def sanitize_filename(name):
     return clean if clean else "Unknown_Movie"
 
 
-def is_valid_media_file(local_path):
+IGNORED_DIR_NAMES = {
+    'extras', 'behind the scenes', 'deleted scenes',
+    'featurettes', 'interviews', 'scenes', 'shorts', 'trailers'
+}
+
+MIN_MEDIA_SIZE_BYTES = 1024 * 1024  # 1 MB minimum for a valid movie video file
+
+
+def is_valid_media_file(local_path, min_size_bytes=MIN_MEDIA_SIZE_BYTES):
     """Check if the local path is a valid main movie video file."""
     if not os.path.exists(local_path):
         return False, "File does not exist"
@@ -138,10 +142,30 @@ def is_valid_media_file(local_path):
     if ext not in VIDEO_EXTENSIONS:
         return False, f"Not a video file (extension: {ext})"
 
-    filename_lower = os.path.basename(local_path).lower()
-    for pattern in IGNORED_NAME_PATTERNS:
-        if pattern in filename_lower:
-            return False, f"Ignored media file pattern '{pattern}' in filename"
+    # Sanity check file size (avoid 0-byte or corrupted stub files)
+    try:
+        file_size = os.path.getsize(local_path)
+        if file_size < min_size_bytes:
+            return False, f"File size too small ({file_size} bytes < {min_size_bytes} bytes)"
+    except OSError as e:
+        return False, f"Could not determine file size: {e}"
+
+    filename = os.path.basename(local_path)
+    filename_lower = filename.lower()
+    stem = os.path.splitext(filename_lower)[0]
+
+    # Exclude trailers
+    if stem == "trailer" or stem.endswith(("-trailer", "_trailer", ".trailer")):
+        return False, "File is already a trailer"
+
+    # Exclude sample clips
+    if stem == "sample" or stem.endswith(("-sample", "_sample", ".sample")) or ".sample." in filename_lower:
+        return False, "File is a sample clip"
+
+    # Exclude files inside extras / featurettes subdirectories
+    path_parts = [p.lower() for p in os.path.normpath(local_path).split(os.sep)]
+    if any(part in IGNORED_DIR_NAMES for part in path_parts[:-1]):
+        return False, "File is located inside an extras directory"
 
     return True, None
 

@@ -74,10 +74,20 @@ class TestMediaValidation(unittest.TestCase):
     def test_valid_video_file(self):
         for ext in [".mp4", ".mkv", ".avi", ".mov", ".m4v", ".ts", ".iso"]:
             movie_file = os.path.join(self.test_dir, f"Movie (2020){ext}")
-            with open(movie_file, "w") as f:
-                f.write("dummy")
+            with open(movie_file, "wb") as f:
+                f.write(b"x" * (1024 * 1024 + 10))
             valid, reason = is_valid_media_file(movie_file)
-            self.assertTrue(valid, f"Failed for extension {ext}")
+            self.assertTrue(valid, f"Failed for extension {ext}: {reason}")
+            self.assertIsNone(reason)
+
+    def test_movie_with_poster_or_cover_in_title(self):
+        # Movies containing 'poster' or 'cover' in title must be valid
+        for name in ["Poster Boy! (2015).avi", "Cover Girl (1944).mkv", "The Poster (2020).mp4"]:
+            movie_file = os.path.join(self.test_dir, name)
+            with open(movie_file, "wb") as f:
+                f.write(b"x" * (1024 * 1024 + 10))
+            valid, reason = is_valid_media_file(movie_file)
+            self.assertTrue(valid, f"Failed for '{name}': {reason}")
             self.assertIsNone(reason)
 
     def test_nonexistent_file(self):
@@ -92,38 +102,50 @@ class TestMediaValidation(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("not a regular file", reason)
 
+    def test_file_size_too_small(self):
+        small_file = os.path.join(self.test_dir, "corrupted.mkv")
+        with open(small_file, "wb") as f:
+            f.write(b"tiny")
+        valid, reason = is_valid_media_file(small_file)
+        self.assertFalse(valid)
+        self.assertIn("File size too small", reason)
+
     def test_non_video_extension(self):
         for ext in [".nfo", ".txt", ".jpg", ".png", ".srt"]:
-            bad_file = os.path.join(self.test_dir, f"movie{ext}")
-            with open(bad_file, "w") as f:
-                f.write("info")
+            bad_file = os.path.join(self.test_dir, f"poster{ext}")
+            with open(bad_file, "wb") as f:
+                f.write(b"x" * (1024 * 1024 + 10))
             valid, reason = is_valid_media_file(bad_file)
             self.assertFalse(valid, f"Expected non-video rejection for {ext}")
             self.assertIn("Not a video file", reason)
 
     def test_ignored_trailer_file(self):
-        trailer_file = os.path.join(self.test_dir, "Movie (2020)-trailer.mp4")
-        with open(trailer_file, "w") as f:
-            f.write("dummy")
-        valid, reason = is_valid_media_file(trailer_file)
-        self.assertFalse(valid)
-        self.assertIn("Ignored media file pattern", reason)
+        for name in ["Movie (2020)-trailer.mp4", "trailer.mkv", "Movie_trailer.avi"]:
+            trailer_file = os.path.join(self.test_dir, name)
+            with open(trailer_file, "wb") as f:
+                f.write(b"x" * (1024 * 1024 + 10))
+            valid, reason = is_valid_media_file(trailer_file)
+            self.assertFalse(valid, f"Expected rejection for trailer '{name}'")
+            self.assertIn("already a trailer", reason)
 
     def test_ignored_sample_file(self):
-        sample_file = os.path.join(self.test_dir, "Movie.sample.mkv")
-        with open(sample_file, "w") as f:
-            f.write("dummy")
-        valid, reason = is_valid_media_file(sample_file)
-        self.assertFalse(valid)
-        self.assertIn("Ignored media file pattern", reason)
+        for name in ["Movie.sample.mkv", "sample.mkv", "Movie-sample.avi"]:
+            sample_file = os.path.join(self.test_dir, name)
+            with open(sample_file, "wb") as f:
+                f.write(b"x" * (1024 * 1024 + 10))
+            valid, reason = is_valid_media_file(sample_file)
+            self.assertFalse(valid, f"Expected rejection for sample '{name}'")
+            self.assertIn("sample clip", reason)
 
-    def test_ignored_cover_and_poster(self):
-        for name in ["cover.jpg", "poster.mkv", "fanart.mp4"]:
-            file_path = os.path.join(self.test_dir, name)
-            with open(file_path, "w") as f:
-                f.write("dummy")
-            valid, reason = is_valid_media_file(file_path)
-            self.assertFalse(valid)
+    def test_ignored_extras_directory(self):
+        extras_dir = os.path.join(self.test_dir, "extras")
+        os.makedirs(extras_dir)
+        extra_file = os.path.join(extras_dir, "clip.mkv")
+        with open(extra_file, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
+        valid, reason = is_valid_media_file(extra_file)
+        self.assertFalse(valid)
+        self.assertIn("extras directory", reason)
 
 
 class TestTrailerSources(unittest.TestCase):
@@ -315,8 +337,8 @@ class TestMovieProcessing(unittest.TestCase):
 
     def test_process_movie_dry_run(self):
         movie_path = os.path.join(self.test_dir, "Inception (2010).mkv")
-        with open(movie_path, "w") as f:
-            f.write("content")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
 
         movie = {
             "Id": "item123",
@@ -337,10 +359,10 @@ class TestMovieProcessing(unittest.TestCase):
     def test_process_movie_skip_if_trailer_exists(self):
         movie_path = os.path.join(self.test_dir, "Inception (2010).mkv")
         trailer_path = os.path.join(self.test_dir, "Inception (2010)-trailer.mp4")
-        with open(movie_path, "w") as f:
-            f.write("content")
-        with open(trailer_path, "w") as f:
-            f.write("trailer_content")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
+        with open(trailer_path, "wb") as f:
+            f.write(b"trailer_content")
 
         movie = {
             "Id": "item123",
@@ -362,8 +384,8 @@ class TestMovieProcessing(unittest.TestCase):
     @patch("jellyfin_trailer_fetcher.fetch_trailers.trigger_jellyfin_refresh")
     def test_process_movie_successful_download_and_sync(self, mock_refresh, mock_ydl_class):
         movie_path = os.path.join(self.test_dir, "Matrix (1999).mkv")
-        with open(movie_path, "w") as f:
-            f.write("matrix video")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
 
         movie = {
             "Id": "item456",
@@ -402,8 +424,8 @@ class TestMovieProcessing(unittest.TestCase):
     @patch("jellyfin_trailer_fetcher.fetch_trailers.yt_dlp.YoutubeDL")
     def test_process_movie_fallback_from_private_remote_to_search(self, mock_ydl_class):
         movie_path = os.path.join(self.test_dir, "Robot Riot (2020).mkv")
-        with open(movie_path, "w") as f:
-            f.write("robot riot video")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
 
         movie = {
             "Id": "item789",
@@ -443,8 +465,8 @@ class TestMovieProcessing(unittest.TestCase):
 
     def test_process_movie_rename_original(self):
         old_movie_path = os.path.join(self.test_dir, "Matrix.1999.1080p.mkv")
-        with open(old_movie_path, "w") as f:
-            f.write("matrix video")
+        with open(old_movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
 
         movie = {
             "Id": "item456",
