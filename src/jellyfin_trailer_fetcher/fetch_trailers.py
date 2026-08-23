@@ -1,0 +1,420 @@
+import os
+import sys
+import argparse
+import logging
+import requests
+import tempfile
+import yt_dlp
+import json
+import re
+import shutil
+from dotenv import load_dotenv
+
+# Set up logging in English
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
+
+VIDEO_EXTENSIONS = {
+    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.m4v',
+    '.webm', '.ts', '.m2ts', '.iso', '.vob'
+}
+
+IGNORED_NAME_PATTERNS = [
+    '-trailer', '.trailer', '_trailer',
+    'sample', '.sample', 'cover', 'poster', 'fanart'
+]
+
+class YoutubeDownloaderLogger:
+    def debug(self, msg):
+        # We ignore verbose debug lines from yt-dlp to keep the log clean
+        pass
+
+    def info(self, msg):
+        # Route yt-dlp info messages to our logger
+        logger.info(f"[yt-dlp] {msg}")
+
+    def warning(self, msg):
+        logger.warning(f"[yt-dlp] {msg}")
+
+    def error(self, msg):
+        logger.error(f"[yt-dlp] {msg}")
+
+
+def load_config(load_env=True):
+    """Load configuration from environment variables (.env)."""
+    if load_env:
+        load_dotenv()
+
+    jellyfin_url = os.getenv("JELLYFIN_URL", "").rstrip("/")
+    api_key = os.getenv("API_KEY", "")
+    
+    path_mappings_raw = os.getenv("PATH_MAPPINGS")
+    path_mappings = {}
+
+    if path_mappings_raw:
+        try:
+            path_mappings = json.loads(path_mappings_raw)
+        except json.JSONDecodeError as e:
+            logger.critical(f"Error: PATH_MAPPINGS in .env is not valid JSON: {e}")
+            return None, None, None, None
+    else:
+        # Fallback to single prefix configuration if present
+        nas_prefix = os.getenv("NAS_PATH_PREFIX")
+        mac_prefix = os.getenv("MAC_PATH_PREFIX")
+        if nas_prefix and mac_prefix:
+            path_mappings = {nas_prefix: mac_prefix}
+
+    cookie_browser = os.getenv("COOKIE_BROWSER", "firefox")
+    if cookie_browser.lower() in ("none", "false", "0", ""):
+        cookie_browser = None
+
+    return jellyfin_url, api_key, path_mappings, cookie_browser
+
+
+def get_jellyfin_headers(api_key):
+    return {"Authorization": f'MediaBrowser Token="{api_key}"'}
+
+
+def get_jellyfin_movies(jellyfin_url, api_key):
+    """Fetch all movies from Jellyfin API."""
+    logger.info("Fetching movie metadata from Jellyfin API...")
+    url = f"{jellyfin_url}/Items"
+    headers = get_jellyfin_headers(api_key)
+    params = {
+        "IncludeItemTypes": "Movie",
+        "Recursive": "true",
+        "Fields": "Path,ProductionYear,PremiereDate,LocalTrailerCount,RemoteTrailers,RunTimeTicks"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        response.raise_for_status()
+        movies = response.json().get("Items", [])
+        # Sort movies by path to group directories for cleaner logging
+        return sorted(movies, key=lambda x: x.get("Path", "") or "")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching metadata: {e}")
+        return []
+
+
+def translate_path(nas_path, path_mappings):
+    """Map NAS path prefix to local Mac path prefix."""
+    if not nas_path or not path_mappings:
+        return None
+    for nas_prefix, mac_prefix in path_mappings.items():
+        if not nas_prefix.endswith('/'):
+            nas_prefix += '/'
+        if not mac_prefix.endswith('/'):
+            mac_prefix += '/'
+            
+        if nas_path.startswith(nas_prefix):
+            return nas_path.replace(nas_prefix, mac_prefix, 1)
+        
+    return None
+
+
+def sanitize_filename(name):
+    """Remove illegal filesystem characters from filename."""
+    clean = re.sub(r'[\\/*?:"<>|]', "", name).strip()
+    return clean if clean else "Unknown_Movie"
+
+
+def is_valid_media_file(local_path):
+    """Check if the local path is a valid main movie video file."""
+    if not os.path.exists(local_path):
+        return False, "File does not exist"
+
+    if not os.path.isfile(local_path):
+        return False, "Path is not a regular file"
+
+    ext = os.path.splitext(local_path)[1].lower()
+    if ext not in VIDEO_EXTENSIONS:
+        return False, f"Not a video file (extension: {ext})"
+
+    filename_lower = os.path.basename(local_path).lower()
+    for pattern in IGNORED_NAME_PATTERNS:
+        if pattern in filename_lower:
+            return False, f"Ignored media file pattern '{pattern}' in filename"
+
+    return True, None
+
+
+def get_trailer_sources(movie):
+    """
+    Determine sources for trailer download:
+    1. Official RemoteTrailers from Jellyfin metadata
+    2. Two-stage YouTube search (Official Trailer query, then Broad query)
+    """
+    title = movie.get("Name", "Unknown")
+    year = movie.get("ProductionYear")
+    if not year and movie.get("PremiereDate"):
+        year = movie.get("PremiereDate")[:4]
+
+    remote_trailers = movie.get("RemoteTrailers", [])
+    sources_to_try = []
+
+    # Add official remote links first
+    for rt in remote_trailers:
+        url = rt.get("Url") if isinstance(rt, dict) else str(rt)
+        if url and ("youtube" in url.lower() or "youtu.be" in url.lower()):
+            sources_to_try.append(url)
+
+    # Add two-stage search
+    # Stage 1: Official Trailer query
+    search_query_official = f"{title} {year} official trailer".strip() if year else f"{title} official trailer"
+    sources_to_try.append(f"ytsearch1:{search_query_official}")
+    
+    # Stage 2: Broad query (only if Stage 1 fails)
+    search_query_broad = f"{title} {year}".strip() if year else title
+    sources_to_try.append(f"ytsearch1:{search_query_broad}")
+
+    return sources_to_try
+
+
+def create_trailer_filter(title, movie_duration_sec, is_search):
+    """Create a yt-dlp match_filter function for trailers."""
+    def current_trailer_filter(info, *, incomplete):
+        # 1. Get YouTube Video Metadata
+        duration = info.get('duration')
+        yt_title = (info.get('title') or "").lower()
+        
+        # 2. Universal Duration Check (Trailers are rarely > 5 minutes)
+        if duration and duration > 300:
+            return 'Duration > 5min'
+        
+        # 10,000,000 ticks = 1 second in Jellyfin RunTimeTicks
+        if movie_duration_sec and movie_duration_sec > 60:
+            if duration and duration >= (movie_duration_sec * 0.6):
+                return f'Too long compared to movie ({duration}s >= {movie_duration_sec}s)'
+
+        # 3. Keyword/Title Matching (The "Cross-Check")
+        if is_search:
+            target_title_clean = title.lower()
+            allowed = ['trailer', 'teaser', 'vorschau', 'preview', 'clip']
+            
+            # Normalize strings by replacing punctuation with spaces and collapsing whitespace
+            norm_target = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', title.lower())).strip()
+            norm_yt = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', yt_title)).strip()
+            
+            # We accept if: Title matches AND keyword found
+            title_match = (target_title_clean in yt_title) or (norm_target in norm_yt)
+            keyword_match = any(kw in yt_title for kw in allowed)
+            
+            if not (title_match and keyword_match):
+                return f'Rejected. Title: "{yt_title}"'
+        
+        return None
+
+    return current_trailer_filter
+
+
+def build_ydl_opts(tmp_filename, filter_func, cookie_browser="firefox"):
+    """Construct yt-dlp options dictionary with optimal settings and geobypass."""
+    ydl_opts = {
+        # Force format to standard m4a/aac to avoid experimental codecs like iamf
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': tmp_filename,
+        'noplaylist': True,
+        'logger': YoutubeDownloaderLogger(),
+        'merge_output_format': 'mp4',
+        'no_part': True,
+        'nocheckcertificate': True,
+        'remote_components': ['ejs:github'],
+        'js_runtimes': {'deno': {}, 'node': {}},
+        'socket_timeout': 15,
+        'geo_bypass': True,
+        'match_filter': filter_func,
+        'extractor_args': {
+            'youtube': ['player_client=android,web,ios', 'po_token=generated']
+        }
+    }
+    if cookie_browser:
+        ydl_opts['cookiesfrombrowser'] = (cookie_browser,)
+
+    return ydl_opts
+
+
+def trigger_jellyfin_refresh(jellyfin_url, api_key, item_id):
+    """Trigger a metadata refresh in Jellyfin for a specific item."""
+    url = f"{jellyfin_url}/Items/{item_id}/Refresh"
+    headers = get_jellyfin_headers(api_key)
+    params = {"Recursive": "true", "MetadataRefreshMode": "Default", "ImageRefreshMode": "Default"}
+    try:
+        response = requests.post(url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to trigger API sync for item ID '{item_id}': {e}")
+        return False
+
+
+def process_movie(movie, args, state, config):
+    """Process a single movie: check eligibility, search & download trailer, sync."""
+    jellyfin_url, api_key, path_mappings, cookie_browser = config
+    title = movie.get("Name", "Unknown")
+    path = movie.get("Path", "")
+    
+    # 1. Check & map path before logging
+    local_path = translate_path(path, path_mappings)
+    if not local_path:
+        return
+
+    # Validate that it is a valid main media file (not trailer, sample, extra, missing)
+    valid, reason = is_valid_media_file(local_path)
+    if not valid:
+        logger.warning(f"Skipping '{title}': {reason} ({local_path})")
+        return
+
+    folder_path = os.path.dirname(local_path)
+    
+    # Track directory changes to reduce log noise
+    if state.get('last_dir') != folder_path:
+        logger.info(f"\n*** Entering directory: {folder_path}")
+        state['last_dir'] = folder_path
+
+    logger.info(f"Processing movie file: {os.path.basename(local_path)} ...")
+    
+    year = movie.get("ProductionYear")
+    if not year and movie.get("PremiereDate"):
+        year = movie.get("PremiereDate")[:4]
+    
+    year_str = f" ({year})" if year else ""
+    safe_title = sanitize_filename(f"{title}{year_str}")
+
+    logger.info(f"  > using title '{title}'")
+    original_ext = os.path.splitext(local_path)[1]
+    new_movie_path = os.path.join(folder_path, f"{safe_title}{original_ext}")
+    trailer_filename = os.path.join(folder_path, f"{safe_title}-trailer.mp4")
+
+    # Calculate actual movie duration in seconds (10,000,000 ticks = 1 second)
+    runtime_ticks = movie.get("RunTimeTicks")
+    movie_duration_sec = (runtime_ticks / 10000000) if runtime_ticks else None
+
+    # 2. Check if local trailer exists (metadata count or file existence)
+    trailer_candidates = [
+        trailer_filename,
+        os.path.join(folder_path, f"{safe_title}-trailer.mkv"),
+        os.path.join(folder_path, "trailer.mp4"),
+        os.path.join(folder_path, "trailer.mkv")
+    ]
+    if movie.get("LocalTrailerCount", 0) > 0 or any(os.path.exists(cand) for cand in trailer_candidates):
+        logger.info("  > Trailer already exists, skipping.")
+        return
+
+    # 3. OPTIONAL: Rename original file
+    if getattr(args, "rename_original", False) and local_path != new_movie_path:
+        if args.dry_run:
+            logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(new_movie_path)}'")
+        else:
+            if not os.path.exists(new_movie_path):
+                try:
+                    os.rename(local_path, new_movie_path)
+                    logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
+                    local_path = new_movie_path
+                except Exception as e:
+                    logger.error(f"  > Failed to rename file for '{title}': {e}")
+            else:
+                logger.warning(f"  > Target file '{os.path.basename(new_movie_path)}' already exists. Skipping rename.")
+
+    # 4. Determine sources for trailer download
+    sources_to_try = get_trailer_sources(movie)
+
+    # 5. yt-dlp Configuration & Improved Filter Logic
+    log_prefix = "[DRY-RUN] " if args.dry_run else ""
+    download_success = False
+
+    for source in sources_to_try:
+        is_search = source.startswith("ytsearch1:")
+        logger.info(f"  > {log_prefix}Fetching trailer via {'Search' if is_search else 'Remote-URL'} ({source})...")
+
+        if args.dry_run:
+            logger.info(f"  > [DRY-RUN] Will save as: '{os.path.basename(trailer_filename)}'")
+            download_success = True
+            break
+
+        # Create a local temporary file for the download to avoid locking issues
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+            tmp_filename = tmp_file.name
+
+        current_trailer_filter = create_trailer_filter(title, movie_duration_sec, is_search)
+        ydl_opts = build_ydl_opts(tmp_filename, current_trailer_filter, cookie_browser=cookie_browser)
+
+        try:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([source])
+            except Exception as e:
+                # If downloading failed with browser cookies, retry once without cookies
+                if cookie_browser and 'cookiesfrombrowser' in ydl_opts:
+                    logger.warning(f"  > Download with '{cookie_browser}' cookies failed ({e}). Retrying without cookies...")
+                    ydl_opts_no_cookies = build_ydl_opts(tmp_filename, current_trailer_filter, cookie_browser=None)
+                    with yt_dlp.YoutubeDL(ydl_opts_no_cookies) as ydl:
+                        ydl.download([source])
+                else:
+                    raise e
+
+            if os.path.exists(tmp_filename) and os.path.getsize(tmp_filename) > 0:
+                # Use shutil.copy2 to copy to NAS, then remove temp file
+                # This works across mount points (SSD to NFS)
+                shutil.copy2(tmp_filename, trailer_filename)
+                
+                # Verify copy
+                if os.path.exists(trailer_filename) and os.path.getsize(trailer_filename) > 0:
+                    os.remove(tmp_filename)
+                    logger.info(f"  > Trailer successfully saved: {os.path.basename(trailer_filename)}")
+                    download_success = True
+                    break
+                else:
+                    logger.warning(f"  > Copy failed or file is empty on remote: {trailer_filename}")
+            else:
+                logger.warning(f"  > No suitable trailer found (rejected by filter).")
+                
+        except Exception as e:
+            if os.path.exists(tmp_filename):
+                try:
+                    os.remove(tmp_filename)
+                except OSError:
+                    pass
+            logger.warning(f"  > Download failed: {e}. Trying next...")
+
+    # 6. API-Sync trigger
+    if download_success and getattr(args, "sync", False) and not args.dry_run:
+        item_id = movie.get("Id")
+        if item_id:
+            logger.info(f"  > Triggering Jellyfin metadata refresh for '{title}' (ID: {item_id})...")
+            trigger_jellyfin_refresh(jellyfin_url, api_key, item_id)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Download missing movie trailers for Jellyfin.")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would happen without modifying anything.")
+    parser.add_argument("--sync", action="store_true", help="Trigger a Jellyfin metadata scan after download.")
+    parser.add_argument("--rename-original", action="store_true", help="Rename the original movie file to match the metadata title.")
+    args = parser.parse_args(argv)
+
+    config = load_config()
+    jellyfin_url, api_key, path_mappings, _ = config
+
+    if not jellyfin_url or not api_key or not path_mappings:
+        logger.critical("Missing configuration in .env (JELLYFIN_URL, API_KEY, or PATH_MAPPINGS).")
+        sys.exit(1)
+
+    if args.dry_run:
+        logger.info("DRY-RUN MODE ACTIVE")
+
+    movies = get_jellyfin_movies(jellyfin_url, api_key)
+    logger.info(f"-> {len(movies)} movies found in Jellyfin database.")
+
+    # Dictionary to maintain state across the loop iterations
+    state = {'last_dir': None}
+
+    for movie in movies:
+        process_movie(movie, args, state, config)
+
+
+if __name__ == "__main__":
+    main()
