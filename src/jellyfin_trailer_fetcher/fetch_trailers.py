@@ -24,6 +24,13 @@ VIDEO_EXTENSIONS = {
     '.webm', '.ts', '.m2ts', '.iso', '.vob'
 }
 
+IGNORED_DIR_NAMES = {
+    'extras', 'behind the scenes', 'deleted scenes',
+    'featurettes', 'interviews', 'scenes', 'shorts', 'trailers'
+}
+
+MIN_MEDIA_SIZE_BYTES = 1024 * 1024  # 1 MB minimum for a valid movie video file
+
 
 class YoutubeDownloaderLogger:
     def debug(self, msg):
@@ -86,7 +93,7 @@ def get_jellyfin_movies(jellyfin_url, api_key):
     params = {
         "IncludeItemTypes": "Movie",
         "Recursive": "true",
-        "Fields": "Path,ProductionYear,PremiereDate,LocalTrailerCount,RemoteTrailers,RunTimeTicks"
+        "Fields": "Path,ProductionYear,PremiereDate,LocalTrailerCount,RemoteTrailers,RunTimeTicks,OriginalTitle"
     }
     
     try:
@@ -122,12 +129,65 @@ def sanitize_filename(name):
     return clean if clean else "Unknown_Movie"
 
 
-IGNORED_DIR_NAMES = {
-    'extras', 'behind the scenes', 'deleted scenes',
-    'featurettes', 'interviews', 'scenes', 'shorts', 'trailers'
-}
+def is_non_latin(text):
+    """Check if the text contains non-Latin scripts (e.g. CJK, Cyrillic, Arabic)."""
+    if not text:
+        return False
+    return bool(re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]', text))
 
-MIN_MEDIA_SIZE_BYTES = 1024 * 1024  # 1 MB minimum for a valid movie video file
+
+def extract_main_title(title):
+    """
+    Extract clean title without year, primary main title (before subtitle separators),
+    and primary first word for fuzzy matching.
+    """
+    clean = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip()
+    # Split by subtitle delimiters: ' - ', ' : ', ' – ', ' — ', ' / ', ' | '
+    parts = re.split(r'\s+[-–—:|/]\s+|\s*[:/]\s*', clean)
+    main = parts[0].strip() if parts else clean
+    raw_first = clean.split()[0].strip() if clean.split() else clean
+    first_word = re.sub(r'[^\w\s]', '', raw_first).strip()
+    return clean, main, first_word
+
+
+def resolve_movie_titles(movie, local_path=""):
+    """
+    Determine preferred title for naming/renaming (honoring Latin locale over CJK/non-Latin)
+    and collect all title variants for search and trailer filtering.
+    """
+    raw_name = movie.get("Name", "Unknown")
+    original_title = movie.get("OriginalTitle", "")
+
+    file_stem = ""
+    if local_path:
+        base = os.path.basename(local_path)
+        stem = os.path.splitext(base)[0]
+        file_stem = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', stem).strip()
+
+    # Preferred title for display and file naming:
+    # If raw_name is Latin, use it. If raw_name is non-Latin (e.g. Japanese Kanji),
+    # prefer Latin original_title or existing Latin filename.
+    if not is_non_latin(raw_name):
+        preferred_title = raw_name
+    elif original_title and not is_non_latin(original_title):
+        preferred_title = original_title
+    elif file_stem and not is_non_latin(file_stem):
+        preferred_title = file_stem
+    else:
+        preferred_title = raw_name
+
+    # Collect title variants for query generation and filter cross-checks
+    title_variants = []
+    if not is_non_latin(preferred_title):
+        ordered_candidates = [preferred_title, original_title, file_stem, raw_name]
+    else:
+        ordered_candidates = [raw_name, original_title, file_stem]
+
+    for t in ordered_candidates:
+        if t and t not in title_variants:
+            title_variants.append(t)
+
+    return preferred_title, title_variants
 
 
 def is_valid_media_file(local_path, min_size_bytes=MIN_MEDIA_SIZE_BYTES):
@@ -170,13 +230,12 @@ def is_valid_media_file(local_path, min_size_bytes=MIN_MEDIA_SIZE_BYTES):
     return True, None
 
 
-def get_trailer_sources(movie):
+def get_trailer_sources(movie, local_path=""):
     """
     Determine sources for trailer download:
     1. Official RemoteTrailers from Jellyfin metadata
-    2. Two-stage YouTube search (Official Trailer query, then Broad query)
+    2. Multi-stage YouTube search (Full title + year, Main title + year, Broad query, Native search)
     """
-    title = movie.get("Name", "Unknown")
     year = movie.get("ProductionYear")
     if not year and movie.get("PremiereDate"):
         year = movie.get("PremiereDate")[:4]
@@ -184,29 +243,69 @@ def get_trailer_sources(movie):
     remote_trailers = movie.get("RemoteTrailers", [])
     sources_to_try = []
 
-    # Add official remote links first
+    # 1. Add official remote links first
     for rt in remote_trailers:
         url = rt.get("Url") if isinstance(rt, dict) else str(rt)
         if url and ("youtube" in url.lower() or "youtu.be" in url.lower()):
-            sources_to_try.append(url)
+            if url not in sources_to_try:
+                sources_to_try.append(url)
 
-    # Clean title for search (strip any existing (YYYY) in title)
-    clean_title = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip()
+    # 2. Collect title candidates
+    _, title_variants = resolve_movie_titles(movie, local_path)
 
-    # Add two-stage search using ytsearch5 (yt-dlp checks top 5 candidates with max_downloads=1)
-    # Stage 1: Official Trailer query
-    search_query_official = f"{clean_title} {year} official trailer".strip() if year else f"{clean_title} official trailer"
-    sources_to_try.append(f"ytsearch5:{search_query_official}")
-    
-    # Stage 2: Broad query (only if Stage 1 fails)
-    search_query_broad = f"{clean_title} {year}".strip() if year else clean_title
-    sources_to_try.append(f"ytsearch5:{search_query_broad}")
+    queries = []
+    for cand in title_variants:
+        clean_cand, main_cand, _ = extract_main_title(cand)
+        non_lat = is_non_latin(clean_cand)
+
+        if non_lat:
+            # Japanese / CJK specific search queries
+            if year:
+                queries.append(f"{clean_cand} {year} 予告")
+            queries.append(f"{clean_cand} 予告")
+            queries.append(f"{clean_cand} PV")
+            if main_cand != clean_cand:
+                queries.append(f"{main_cand} 予告")
+                queries.append(f"{main_cand} PV")
+        else:
+            # Latin / English search queries
+            # Stage 1: Official trailer with year
+            if year:
+                queries.append(f"{clean_cand} {year} official trailer")
+                if main_cand != clean_cand:
+                    queries.append(f"{main_cand} {year} official trailer")
+
+            # Stage 2: Trailer search without year (handles unlisted/differing release years)
+            queries.append(f"{clean_cand} official trailer")
+            queries.append(f"{clean_cand} trailer")
+            if main_cand != clean_cand:
+                queries.append(f"{main_cand} official trailer")
+                queries.append(f"{main_cand} trailer")
+
+            # Stage 3: Broad query
+            if year:
+                queries.append(f"{clean_cand} {year}")
+                if main_cand != clean_cand:
+                    queries.append(f"{main_cand} {year}")
+            if main_cand != clean_cand:
+                queries.append(main_cand)
+
+    # Add deduplicated search queries (ytsearch5 checks top 5 candidates with max_downloads=1)
+    for q in queries:
+        q_strip = q.strip()
+        if q_strip:
+            source = f"ytsearch5:{q_strip}"
+            if source not in sources_to_try:
+                sources_to_try.append(source)
 
     return sources_to_try
 
 
-def create_trailer_filter(title, movie_duration_sec, is_search):
+def create_trailer_filter(title_variants, movie_duration_sec, is_search):
     """Create a yt-dlp match_filter function for trailers."""
+    if isinstance(title_variants, str):
+        title_variants = [title_variants]
+
     def current_trailer_filter(info, *, incomplete):
         # When incomplete is True, full metadata (like title or duration) is not yet available.
         # Returning None lets yt-dlp continue to extract complete metadata.
@@ -227,20 +326,35 @@ def create_trailer_filter(title, movie_duration_sec, is_search):
 
         # 3. Keyword/Title Matching for Search Results
         if is_search:
-            clean_title = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip().lower()
-            allowed = ['trailer', 'teaser', 'vorschau', 'preview', 'clip']
+            allowed = ['trailer', 'teaser', 'vorschau', 'preview', 'clip', 'pv', '予告', '特報', '本予告', 'cm', 'sub']
+            keyword_match = any(kw in yt_title for kw in allowed)
 
-            # Normalize punctuation and collapse whitespace
-            norm_target = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', clean_title)).strip()
             norm_yt = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', yt_title)).strip()
 
-            # Significant words check (ignore common articles)
-            ignore_words = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo'}
-            target_words = [w for w in norm_target.split() if len(w) > 1 and w not in ignore_words]
-            words_match = all(w in norm_yt for w in target_words) if target_words else (norm_target in norm_yt)
-
-            title_match = (clean_title in yt_title) or (norm_target in norm_yt) or words_match
-            keyword_match = any(kw in yt_title for kw in allowed)
+            title_match = False
+            for tv in title_variants:
+                clean_t, main_t, first_w = extract_main_title(tv)
+                for cand in (clean_t, main_t, first_w):
+                    cand_lower = cand.lower().strip()
+                    if not cand_lower:
+                        continue
+                    if is_non_latin(cand_lower):
+                        if cand_lower in yt_title:
+                            title_match = True
+                            break
+                    else:
+                        norm_cand = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', cand_lower)).strip()
+                        if cand_lower in yt_title or (norm_cand and norm_cand in norm_yt):
+                            title_match = True
+                            break
+                        # Check significant words (exclude filler words)
+                        ignore_words = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'with'}
+                        words = [w for w in norm_cand.split() if len(w) > 1 and w not in ignore_words]
+                        if words and all(w in norm_yt for w in words):
+                            title_match = True
+                            break
+                if title_match:
+                    break
 
             if not (title_match and keyword_match):
                 return f'Rejected. Title mismatch or missing keyword: "{yt_title}"'
@@ -294,7 +408,7 @@ def trigger_jellyfin_refresh(jellyfin_url, api_key, item_id):
 def process_movie(movie, args, state, config):
     """Process a single movie: check eligibility, search & download trailer, sync."""
     jellyfin_url, api_key, path_mappings, cookie_browser = config
-    title = movie.get("Name", "Unknown")
+    raw_title = movie.get("Name", "Unknown")
     path = movie.get("Path", "")
     
     # 1. Check & map path before logging
@@ -305,8 +419,10 @@ def process_movie(movie, args, state, config):
     # Validate that it is a valid main media file (not trailer, sample, extra, missing)
     valid, reason = is_valid_media_file(local_path)
     if not valid:
-        logger.warning(f"Skipping '{title}': {reason} ({local_path})")
+        logger.warning(f"Skipping '{raw_title}': {reason} ({local_path})")
         return
+
+    preferred_title, title_variants = resolve_movie_titles(movie, local_path)
 
     folder_path = os.path.dirname(local_path)
     
@@ -322,9 +438,9 @@ def process_movie(movie, args, state, config):
         year = movie.get("PremiereDate")[:4]
     
     year_str = f" ({year})" if year else ""
-    safe_title = sanitize_filename(f"{title}{year_str}")
+    safe_title = sanitize_filename(f"{preferred_title}{year_str}")
 
-    logger.info(f"  > using title '{title}'")
+    logger.info(f"  > using title '{preferred_title}'")
     original_ext = os.path.splitext(local_path)[1]
     new_movie_path = os.path.join(folder_path, f"{safe_title}{original_ext}")
     trailer_filename = os.path.join(folder_path, f"{safe_title}-trailer.mp4")
@@ -355,12 +471,12 @@ def process_movie(movie, args, state, config):
                     logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
                     local_path = new_movie_path
                 except Exception as e:
-                    logger.error(f"  > Failed to rename file for '{title}': {e}")
+                    logger.error(f"  > Failed to rename file for '{preferred_title}': {e}")
             else:
                 logger.warning(f"  > Target file '{os.path.basename(new_movie_path)}' already exists. Skipping rename.")
 
     # 4. Determine sources for trailer download
-    sources_to_try = get_trailer_sources(movie)
+    sources_to_try = get_trailer_sources(movie, local_path)
 
     # 5. yt-dlp Configuration & Improved Filter Logic
     log_prefix = "[DRY-RUN] " if args.dry_run else ""
@@ -375,7 +491,7 @@ def process_movie(movie, args, state, config):
             download_success = True
             break
 
-        current_trailer_filter = create_trailer_filter(title, movie_duration_sec, is_search)
+        current_trailer_filter = create_trailer_filter(title_variants, movie_duration_sec, is_search)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_pattern = os.path.join(tmp_dir, "trailer.%(ext)s")
@@ -413,7 +529,7 @@ def process_movie(movie, args, state, config):
     if download_success and getattr(args, "sync", False) and not args.dry_run:
         item_id = movie.get("Id")
         if item_id:
-            logger.info(f"  > Triggering Jellyfin metadata refresh for '{title}' (ID: {item_id})...")
+            logger.info(f"  > Triggering Jellyfin metadata refresh for '{preferred_title}' (ID: {item_id})...")
             trigger_jellyfin_refresh(jellyfin_url, api_key, item_id)
 
 

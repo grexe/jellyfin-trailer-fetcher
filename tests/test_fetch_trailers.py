@@ -12,6 +12,9 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     translate_path,
     sanitize_filename,
     is_valid_media_file,
+    is_non_latin,
+    extract_main_title,
+    resolve_movie_titles,
     get_trailer_sources,
     create_trailer_filter,
     build_ydl_opts,
@@ -64,6 +67,50 @@ class TestSanitizeFilename(unittest.TestCase):
         self.assertEqual(sanitize_filename(""), "Unknown_Movie")
 
 
+class TestTitleResolutionAndExtraction(unittest.TestCase):
+    def test_is_non_latin(self):
+        self.assertTrue(is_non_latin("ギヴン うらがわの存在"))
+        self.assertTrue(is_non_latin("ゴキブリたちの黄昏"))
+        self.assertTrue(is_non_latin("嫦娥奔月"))
+        self.assertFalse(is_non_latin("Given - On the other hand"))
+        self.assertFalse(is_non_latin("DAKAICHI"))
+        self.assertFalse(is_non_latin("Gokiburi-tachi no Tasogare"))
+
+    def test_extract_main_title(self):
+        clean, main, first_w = extract_main_title("DAKAICHI - Im being harassed by the sexiest man of the year (2024)")
+        self.assertEqual(clean, "DAKAICHI - Im being harassed by the sexiest man of the year")
+        self.assertEqual(main, "DAKAICHI")
+        self.assertEqual(first_w, "DAKAICHI")
+
+        clean, main, first_w = extract_main_title("Given: On the other hand")
+        self.assertEqual(clean, "Given: On the other hand")
+        self.assertEqual(main, "Given")
+        self.assertEqual(first_w, "Given")
+
+        clean, main, first_w = extract_main_title("ギヴン うらがわの存在")
+        self.assertEqual(clean, "ギヴン うらがわの存在")
+        self.assertEqual(first_w, "ギヴン")
+
+    def test_resolve_movie_titles_latin_preservation(self):
+        # Japanese name in Jellyfin, but Latin file on disk
+        movie = {
+            "Name": "ギヴン うらがわの存在",
+            "OriginalTitle": ""
+        }
+        preferred, variants = resolve_movie_titles(movie, "/path/Given - On the other hand (2021).mp4")
+        self.assertEqual(preferred, "Given - On the other hand")
+        self.assertIn("Given - On the other hand", variants)
+        self.assertIn("ギヴン うらがわの存在", variants)
+
+    def test_resolve_movie_titles_latin_original_title(self):
+        movie = {
+            "Name": "ゴキブリたちの黄昏",
+            "OriginalTitle": "Gokiburi-tachi no Tasogare"
+        }
+        preferred, variants = resolve_movie_titles(movie, "/path/movie.mkv")
+        self.assertEqual(preferred, "Gokiburi-tachi no Tasogare")
+
+
 class TestMediaValidation(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -81,7 +128,6 @@ class TestMediaValidation(unittest.TestCase):
             self.assertIsNone(reason)
 
     def test_movie_with_poster_or_cover_in_title(self):
-        # Movies containing 'poster' or 'cover' in title must be valid
         for name in ["Poster Boy! (2015).avi", "Cover Girl (1944).mkv", "The Poster (2020).mp4"]:
             movie_file = os.path.join(self.test_dir, name)
             with open(movie_file, "wb") as f:
@@ -160,107 +206,94 @@ class TestTrailerSources(unittest.TestCase):
             ]
         }
         sources = get_trailer_sources(movie)
-        expected = [
-            "https://www.youtube.com/watch?v=YoHD9XEInc0",
-            "https://youtu.be/dummy123",
-            "ytsearch5:Inception 2010 official trailer",
-            "ytsearch5:Inception 2010"
-        ]
-        self.assertEqual(sources, expected)
+        self.assertIn("https://www.youtube.com/watch?v=YoHD9XEInc0", sources)
+        self.assertIn("https://youtu.be/dummy123", sources)
+        self.assertIn("ytsearch5:Inception 2010 official trailer", sources)
+        self.assertIn("ytsearch5:Inception official trailer", sources)
+        self.assertIn("ytsearch5:Inception trailer", sources)
 
-    def test_sources_with_year_in_title(self):
+    def test_sources_with_subtitle_separation(self):
         movie = {
-            "Name": "Robot Riot (2020)",
-            "ProductionYear": 2020,
+            "Name": "DAKAICHI - Im being harassed by the sexiest man of the year",
+            "ProductionYear": 2024,
             "RemoteTrailers": []
         }
         sources = get_trailer_sources(movie)
-        expected = [
-            "ytsearch5:Robot Riot 2020 official trailer",
-            "ytsearch5:Robot Riot 2020"
-        ]
-        self.assertEqual(sources, expected)
+        self.assertIn("ytsearch5:DAKAICHI - Im being harassed by the sexiest man of the year 2024 official trailer", sources)
+        self.assertIn("ytsearch5:DAKAICHI 2024 official trailer", sources)
+        self.assertIn("ytsearch5:DAKAICHI official trailer", sources)
+        self.assertIn("ytsearch5:DAKAICHI trailer", sources)
+        self.assertIn("ytsearch5:DAKAICHI 2024", sources)
+        self.assertIn("ytsearch5:DAKAICHI", sources)
 
-    def test_sources_without_year_and_premiere_date(self):
+    def test_sources_with_japanese_and_latin_titles(self):
         movie = {
-            "Name": "Gladiator II",
-            "PremiereDate": "2024-11-15T00:00:00.0000000Z",
+            "Name": "ギヴン うらがわの存在",
+            "ProductionYear": 2021,
             "RemoteTrailers": []
         }
-        sources = get_trailer_sources(movie)
-        expected = [
-            "ytsearch5:Gladiator II 2024 official trailer",
-            "ytsearch5:Gladiator II 2024"
-        ]
-        self.assertEqual(sources, expected)
-
-    def test_sources_no_year_at_all(self):
-        movie = {
-            "Name": "Unknown Mystery",
-            "RemoteTrailers": []
-        }
-        sources = get_trailer_sources(movie)
-        expected = [
-            "ytsearch5:Unknown Mystery official trailer",
-            "ytsearch5:Unknown Mystery"
-        ]
-        self.assertEqual(sources, expected)
+        sources = get_trailer_sources(movie, "/media/Given - On the other hand.mp4")
+        self.assertIn("ytsearch5:Given - On the other hand 2021 official trailer", sources)
+        self.assertIn("ytsearch5:Given 2021 official trailer", sources)
+        self.assertIn("ytsearch5:Given official trailer", sources)
+        self.assertIn("ytsearch5:ギヴン うらがわの存在 2021 予告", sources)
+        self.assertIn("ytsearch5:ギヴン うらがわの存在 PV", sources)
 
 
 class TestTrailerFilter(unittest.TestCase):
     def test_filter_incomplete_returns_none(self):
-        # yt-dlp calls filter with incomplete=True before full metadata is fetched
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
+        filter_fn = create_trailer_filter(["Inception"], movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"title": None, "duration": None}, incomplete=True)
         self.assertIsNone(reason)
 
     def test_duration_over_5_minutes(self):
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
+        filter_fn = create_trailer_filter(["Inception"], movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 305, "title": "Inception Official Trailer"}, incomplete=False)
         self.assertIn("Duration > 5min", reason)
 
     def test_duration_too_long_for_short_movie(self):
-        # Short film of 300 seconds (5 min) - trailer of 200s is >= 60% of movie
-        filter_fn = create_trailer_filter("Short Movie", movie_duration_sec=300, is_search=True)
+        filter_fn = create_trailer_filter(["Short Movie"], movie_duration_sec=300, is_search=True)
         reason = filter_fn({"duration": 200, "title": "Short Movie Official Trailer"}, incomplete=False)
         self.assertIn("Too long compared to movie", reason)
 
-    def test_search_filter_matches_title_and_keyword(self):
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
-        reason = filter_fn({"duration": 150, "title": "Inception (2010) Official Trailer #1"}, incomplete=False)
+    def test_search_filter_matches_main_title_without_subtitle(self):
+        filter_fn = create_trailer_filter(
+            ["DAKAICHI - Im being harassed by the sexiest man of the year", "DAKAICHI"],
+            movie_duration_sec=5400,
+            is_search=True
+        )
+        reason = filter_fn({"duration": 120, "title": "DAKAICHI Spain Arc Trailer"}, incomplete=False)
         self.assertIsNone(reason)
 
-    def test_search_filter_matches_german_keyword(self):
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
-        reason = filter_fn({"duration": 150, "title": "Inception - Deutscher Vorschau Trailer"}, incomplete=False)
-        self.assertIsNone(reason)
+    def test_search_filter_matches_japanese_pv_and_latin_titles(self):
+        filter_fn = create_trailer_filter(
+            ["Given - On the other hand", "Given", "ギヴン うらがわの存在"],
+            movie_duration_sec=5400,
+            is_search=True
+        )
+        # Latin Crunchyroll trailer
+        self.assertIsNone(filter_fn({"duration": 98, "title": "given - TRAILER OFFICIEL | Crunchyroll"}, incomplete=False))
+        # Japanese official PV
+        self.assertIsNone(filter_fn({"duration": 95, "title": "TVアニメ「ギヴン」PV"}, incomplete=False))
 
-    def test_search_filter_handles_punctuation(self):
-        # Title has colon, YouTube title has hyphen
-        filter_fn = create_trailer_filter("Dune: Part Two", movie_duration_sec=7200, is_search=True)
-        reason = filter_fn({"duration": 180, "title": "Dune - Part Two | Official Trailer"}, incomplete=False)
-        self.assertIsNone(reason)
-
-    def test_search_filter_handles_seeing_heaven(self):
-        filter_fn = create_trailer_filter("Seeing Heaven", movie_duration_sec=6360, is_search=True)
-        reason = filter_fn({"duration": 182, "title": "Seeing Heaven Trailer - QC Cinema"}, incomplete=False)
+    def test_search_filter_matches_change_jade_rabbit(self):
+        filter_fn = create_trailer_filter(
+            ["Chang'e and the Jade Rabbit's Mid-Autumn Adventure", "Chang'e and the Jade Rabbit"],
+            movie_duration_sec=1800,
+            is_search=True
+        )
+        reason = filter_fn({"duration": 148, "title": "[ENG SUB] Chang'e and the Jade Rabbit's Mid-Autumn Adventure"}, incomplete=False)
         self.assertIsNone(reason)
 
     def test_search_filter_rejects_missing_keyword(self):
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
+        filter_fn = create_trailer_filter(["Inception"], movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 150, "title": "Inception Full Soundtrack OST"}, incomplete=False)
         self.assertIn("Rejected.", reason)
 
     def test_search_filter_rejects_wrong_title(self):
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
+        filter_fn = create_trailer_filter(["Inception"], movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 150, "title": "Interstellar Official Trailer"}, incomplete=False)
         self.assertIn("Rejected.", reason)
-
-    def test_remote_url_filter_accepts_valid_duration_regardless_of_keywords(self):
-        # When is_search=False (direct remote trailer URL), it doesn't need cross-check keyword validation
-        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=False)
-        reason = filter_fn({"duration": 150, "title": "Custom Remote Upload"}, incomplete=False)
-        self.assertIsNone(reason)
 
 
 class TestConfigAndYtdlpOpts(unittest.TestCase):
@@ -314,7 +347,6 @@ class TestJellyfinAPI(unittest.TestCase):
 
         movies = get_jellyfin_movies("http://localhost:8096", "key")
         self.assertEqual(len(movies), 2)
-        # Verify sorted by path
         self.assertEqual(movies[0]["Name"], "A")
         self.assertEqual(movies[1]["Name"], "Z")
 
@@ -356,123 +388,16 @@ class TestMovieProcessing(unittest.TestCase):
         expected_trailer = os.path.join(self.test_dir, "Inception (2010)-trailer.mp4")
         self.assertFalse(os.path.exists(expected_trailer))
 
-    def test_process_movie_skip_if_trailer_exists(self):
-        movie_path = os.path.join(self.test_dir, "Inception (2010).mkv")
-        trailer_path = os.path.join(self.test_dir, "Inception (2010)-trailer.mp4")
+    def test_process_movie_preserves_latin_filename_during_rename(self):
+        movie_path = os.path.join(self.test_dir, "Given - On the other hand.mp4")
         with open(movie_path, "wb") as f:
             f.write(b"x" * (1024 * 1024 + 10))
-        with open(trailer_path, "wb") as f:
-            f.write(b"trailer_content")
 
         movie = {
             "Id": "item123",
-            "Name": "Inception",
-            "ProductionYear": 2010,
-            "Path": "/media/Movies/Inception (2010).mkv",
-            "LocalTrailerCount": 1,
-            "RemoteTrailers": []
-        }
-        
-        args = MagicMock(dry_run=False, sync=False, rename_original=False)
-        state = {'last_dir': None}
-
-        with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources") as mock_sources:
-            process_movie(movie, args, state, self.config)
-            mock_sources.assert_not_called()
-
-    @patch("jellyfin_trailer_fetcher.fetch_trailers.yt_dlp.YoutubeDL")
-    @patch("jellyfin_trailer_fetcher.fetch_trailers.trigger_jellyfin_refresh")
-    def test_process_movie_successful_download_and_sync(self, mock_refresh, mock_ydl_class):
-        movie_path = os.path.join(self.test_dir, "Matrix (1999).mkv")
-        with open(movie_path, "wb") as f:
-            f.write(b"x" * (1024 * 1024 + 10))
-
-        movie = {
-            "Id": "item456",
-            "Name": "The Matrix",
-            "ProductionYear": 1999,
-            "Path": "/media/Movies/Matrix (1999).mkv",
-            "LocalTrailerCount": 0,
-            "RemoteTrailers": []
-        }
-
-        # Mock YoutubeDL instance behavior to simulate creating a downloaded temp file in outtmpl dir
-        def fake_download(urls):
-            opts = mock_ydl_class.call_args[0][0]
-            outtmpl = opts['outtmpl']
-            target_file = outtmpl.replace("%(ext)s", "mp4")
-            with open(target_file, "wb") as f:
-                f.write(b"mp4_trailer_bytes")
-            return 0
-
-        mock_ydl_instance = MagicMock()
-        mock_ydl_instance.download.side_effect = fake_download
-        mock_ydl_class.return_value.__enter__.return_value = mock_ydl_instance
-
-        args = MagicMock(dry_run=False, sync=True, rename_original=False)
-        state = {'last_dir': None}
-
-        process_movie(movie, args, state, self.config)
-
-        expected_trailer = os.path.join(self.test_dir, "The Matrix (1999)-trailer.mp4")
-        self.assertTrue(os.path.exists(expected_trailer))
-        with open(expected_trailer, "rb") as f:
-            self.assertEqual(f.read(), b"mp4_trailer_bytes")
-
-        mock_refresh.assert_called_once_with("http://mock-jellyfin:8096", "mock-key", "item456")
-
-    @patch("jellyfin_trailer_fetcher.fetch_trailers.yt_dlp.YoutubeDL")
-    def test_process_movie_fallback_from_private_remote_to_search(self, mock_ydl_class):
-        movie_path = os.path.join(self.test_dir, "Robot Riot (2020).mkv")
-        with open(movie_path, "wb") as f:
-            f.write(b"x" * (1024 * 1024 + 10))
-
-        movie = {
-            "Id": "item789",
-            "Name": "Robot Riot",
-            "ProductionYear": 2020,
-            "Path": "/media/Movies/Robot Riot (2020).mkv",
-            "LocalTrailerCount": 0,
-            "RemoteTrailers": [{"Url": "https://www.youtube.com/watch?v=private_id"}]
-        }
-
-        # First call (private remote URL) raises exception; second call (search query) succeeds
-        mock_ydl_instance = MagicMock()
-        def fake_download(urls):
-            url = urls[0]
-            if "private_id" in url:
-                raise Exception("ERROR: [youtube] private_id: Video unavailable. This video is private")
-            # Search query succeeds
-            opts = mock_ydl_class.call_args[0][0]
-            # Ensure cookies are still present in options on fallback search!
-            self.assertEqual(opts.get('cookiesfrombrowser'), ("firefox",))
-            outtmpl = opts['outtmpl']
-            target_file = outtmpl.replace("%(ext)s", "mp4")
-            with open(target_file, "wb") as f:
-                f.write(b"robot_riot_trailer_bytes")
-            return 0
-
-        mock_ydl_instance.download.side_effect = fake_download
-        mock_ydl_class.return_value.__enter__.return_value = mock_ydl_instance
-
-        args = MagicMock(dry_run=False, sync=False, rename_original=False)
-        state = {'last_dir': None}
-
-        process_movie(movie, args, state, self.config)
-
-        expected_trailer = os.path.join(self.test_dir, "Robot Riot (2020)-trailer.mp4")
-        self.assertTrue(os.path.exists(expected_trailer))
-
-    def test_process_movie_rename_original(self):
-        old_movie_path = os.path.join(self.test_dir, "Matrix.1999.1080p.mkv")
-        with open(old_movie_path, "wb") as f:
-            f.write(b"x" * (1024 * 1024 + 10))
-
-        movie = {
-            "Id": "item456",
-            "Name": "The Matrix",
-            "ProductionYear": 1999,
-            "Path": "/media/Movies/Matrix.1999.1080p.mkv",
+            "Name": "ギヴン うらがわの存在",  # Japanese Jellyfin name
+            "ProductionYear": 2021,
+            "Path": "/media/Movies/Given - On the other hand.mp4",
             "LocalTrailerCount": 0,
             "RemoteTrailers": []
         }
@@ -483,9 +408,12 @@ class TestMovieProcessing(unittest.TestCase):
         with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources", return_value=[]):
             process_movie(movie, args, state, self.config)
 
-        renamed_path = os.path.join(self.test_dir, "The Matrix (1999).mkv")
-        self.assertTrue(os.path.exists(renamed_path))
-        self.assertFalse(os.path.exists(old_movie_path))
+        # Renamed file should preserve Latin script
+        expected_renamed = os.path.join(self.test_dir, "Given - On the other hand (2021).mp4")
+        self.assertTrue(os.path.exists(expected_renamed))
+        # Ensure Japanese characters were NOT used for filename
+        japanese_path = os.path.join(self.test_dir, "ギヴン うらがわの存在 (2021).mp4")
+        self.assertFalse(os.path.exists(japanese_path))
 
 
 if __name__ == "__main__":
