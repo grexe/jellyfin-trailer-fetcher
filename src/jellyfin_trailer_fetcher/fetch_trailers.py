@@ -5,6 +5,7 @@ import logging
 import requests
 import tempfile
 import yt_dlp
+from yt_dlp.utils import MaxDownloadsReached
 import json
 import re
 import shutil
@@ -34,8 +35,10 @@ class YoutubeDownloaderLogger:
         pass
 
     def info(self, msg):
-        # Route yt-dlp info messages to our logger
-        logger.info(f"[yt-dlp] {msg}")
+        if "Video filtered out by match_filter" in msg or "Filtered:" in msg:
+            logger.info(f"[yt-dlp filter] {msg}")
+        else:
+            logger.info(f"[yt-dlp] {msg}")
 
     def warning(self, msg):
         logger.warning(f"[yt-dlp] {msg}")
@@ -69,7 +72,7 @@ def load_config(load_env=True):
             path_mappings = {nas_prefix: mac_prefix}
 
     cookie_browser = os.getenv("COOKIE_BROWSER", "firefox")
-    if cookie_browser.lower() in ("none", "false", "0", ""):
+    if cookie_browser and cookie_browser.lower() in ("none", "false", "0", ""):
         cookie_browser = None
 
     return jellyfin_url, api_key, path_mappings, cookie_browser
@@ -163,14 +166,17 @@ def get_trailer_sources(movie):
         if url and ("youtube" in url.lower() or "youtu.be" in url.lower()):
             sources_to_try.append(url)
 
-    # Add two-stage search
+    # Clean title for search (strip any existing (YYYY) in title)
+    clean_title = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip()
+
+    # Add two-stage search using ytsearch5 (yt-dlp checks top 5 candidates with max_downloads=1)
     # Stage 1: Official Trailer query
-    search_query_official = f"{title} {year} official trailer".strip() if year else f"{title} official trailer"
-    sources_to_try.append(f"ytsearch1:{search_query_official}")
+    search_query_official = f"{clean_title} {year} official trailer".strip() if year else f"{clean_title} official trailer"
+    sources_to_try.append(f"ytsearch5:{search_query_official}")
     
     # Stage 2: Broad query (only if Stage 1 fails)
-    search_query_broad = f"{title} {year}".strip() if year else title
-    sources_to_try.append(f"ytsearch1:{search_query_broad}")
+    search_query_broad = f"{clean_title} {year}".strip() if year else clean_title
+    sources_to_try.append(f"ytsearch5:{search_query_broad}")
 
     return sources_to_try
 
@@ -178,47 +184,56 @@ def get_trailer_sources(movie):
 def create_trailer_filter(title, movie_duration_sec, is_search):
     """Create a yt-dlp match_filter function for trailers."""
     def current_trailer_filter(info, *, incomplete):
-        # 1. Get YouTube Video Metadata
+        # When incomplete is True, full metadata (like title or duration) is not yet available.
+        # Returning None lets yt-dlp continue to extract complete metadata.
+        if incomplete:
+            return None
+
         duration = info.get('duration')
         yt_title = (info.get('title') or "").lower()
-        
-        # 2. Universal Duration Check (Trailers are rarely > 5 minutes)
+
+        # 1. Universal Duration Check (Trailers are rarely > 5 minutes / 300s)
         if duration and duration > 300:
-            return 'Duration > 5min'
-        
-        # 10,000,000 ticks = 1 second in Jellyfin RunTimeTicks
+            return f'Duration > 5min ({duration}s)'
+
+        # 2. Movie Duration Check (10,000,000 ticks = 1 second in Jellyfin RunTimeTicks)
         if movie_duration_sec and movie_duration_sec > 60:
             if duration and duration >= (movie_duration_sec * 0.6):
                 return f'Too long compared to movie ({duration}s >= {movie_duration_sec}s)'
 
-        # 3. Keyword/Title Matching (The "Cross-Check")
+        # 3. Keyword/Title Matching for Search Results
         if is_search:
-            target_title_clean = title.lower()
+            clean_title = re.sub(r'[\(\[]\s*\d{4}\s*[\)\]]', '', title).strip().lower()
             allowed = ['trailer', 'teaser', 'vorschau', 'preview', 'clip']
-            
-            # Normalize strings by replacing punctuation with spaces and collapsing whitespace
-            norm_target = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', title.lower())).strip()
+
+            # Normalize punctuation and collapse whitespace
+            norm_target = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', clean_title)).strip()
             norm_yt = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', yt_title)).strip()
-            
-            # We accept if: Title matches AND keyword found
-            title_match = (target_title_clean in yt_title) or (norm_target in norm_yt)
+
+            # Significant words check (ignore common articles)
+            ignore_words = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo'}
+            target_words = [w for w in norm_target.split() if len(w) > 1 and w not in ignore_words]
+            words_match = all(w in norm_yt for w in target_words) if target_words else (norm_target in norm_yt)
+
+            title_match = (clean_title in yt_title) or (norm_target in norm_yt) or words_match
             keyword_match = any(kw in yt_title for kw in allowed)
-            
+
             if not (title_match and keyword_match):
-                return f'Rejected. Title: "{yt_title}"'
-        
+                return f'Rejected. Title mismatch or missing keyword: "{yt_title}"'
+
         return None
 
     return current_trailer_filter
 
 
-def build_ydl_opts(tmp_filename, filter_func, cookie_browser="firefox"):
+def build_ydl_opts(outtmpl_pattern, filter_func, cookie_browser="firefox"):
     """Construct yt-dlp options dictionary with optimal settings and geobypass."""
     ydl_opts = {
         # Force format to standard m4a/aac to avoid experimental codecs like iamf
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': tmp_filename,
+        'outtmpl': outtmpl_pattern,
         'noplaylist': True,
+        'max_downloads': 1,
         'logger': YoutubeDownloaderLogger(),
         'merge_output_format': 'mp4',
         'no_part': True,
@@ -328,7 +343,7 @@ def process_movie(movie, args, state, config):
     download_success = False
 
     for source in sources_to_try:
-        is_search = source.startswith("ytsearch1:")
+        is_search = source.startswith("ytsearch")
         logger.info(f"  > {log_prefix}Fetching trailer via {'Search' if is_search else 'Remote-URL'} ({source})...")
 
         if args.dry_run:
@@ -336,50 +351,39 @@ def process_movie(movie, args, state, config):
             download_success = True
             break
 
-        # Create a local temporary file for the download to avoid locking issues
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
-            tmp_filename = tmp_file.name
-
         current_trailer_filter = create_trailer_filter(title, movie_duration_sec, is_search)
-        ydl_opts = build_ydl_opts(tmp_filename, current_trailer_filter, cookie_browser=cookie_browser)
 
-        try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_pattern = os.path.join(tmp_dir, "trailer.%(ext)s")
+            ydl_opts = build_ydl_opts(tmp_pattern, current_trailer_filter, cookie_browser=cookie_browser)
+
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([source])
+            except MaxDownloadsReached:
+                # MaxDownloadsReached is raised when max_downloads limit is reached, indicating success
+                pass
             except Exception as e:
-                # If downloading failed with browser cookies, retry once without cookies
-                if cookie_browser and 'cookiesfrombrowser' in ydl_opts:
-                    logger.warning(f"  > Download with '{cookie_browser}' cookies failed ({e}). Retrying without cookies...")
-                    ydl_opts_no_cookies = build_ydl_opts(tmp_filename, current_trailer_filter, cookie_browser=None)
-                    with yt_dlp.YoutubeDL(ydl_opts_no_cookies) as ydl:
-                        ydl.download([source])
-                else:
-                    raise e
+                # Video unavailable / private / network error on this source; proceed to next source
+                logger.warning(f"  > Source '{source}' failed ({e}). Trying next source...")
 
-            if os.path.exists(tmp_filename) and os.path.getsize(tmp_filename) > 0:
-                # Use shutil.copy2 to copy to NAS, then remove temp file
-                # This works across mount points (SSD to NFS)
-                shutil.copy2(tmp_filename, trailer_filename)
-                
-                # Verify copy
+            # Check if a file was downloaded in tmp_dir
+            downloaded_files = [
+                os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
+                if os.path.isfile(os.path.join(tmp_dir, f)) and os.path.getsize(os.path.join(tmp_dir, f)) > 0
+            ]
+
+            if downloaded_files:
+                downloaded_file = downloaded_files[0]
+                shutil.copy2(downloaded_file, trailer_filename)
                 if os.path.exists(trailer_filename) and os.path.getsize(trailer_filename) > 0:
-                    os.remove(tmp_filename)
                     logger.info(f"  > Trailer successfully saved: {os.path.basename(trailer_filename)}")
                     download_success = True
                     break
                 else:
                     logger.warning(f"  > Copy failed or file is empty on remote: {trailer_filename}")
             else:
-                logger.warning(f"  > No suitable trailer found (rejected by filter).")
-                
-        except Exception as e:
-            if os.path.exists(tmp_filename):
-                try:
-                    os.remove(tmp_filename)
-                except OSError:
-                    pass
-            logger.warning(f"  > Download failed: {e}. Trying next...")
+                logger.warning(f"  > No suitable trailer found for source ({source}).")
 
     # 6. API-Sync trigger
     if download_success and getattr(args, "sync", False) and not args.dry_run:

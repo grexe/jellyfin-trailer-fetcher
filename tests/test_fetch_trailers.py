@@ -19,7 +19,6 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     get_jellyfin_movies,
     trigger_jellyfin_refresh,
     process_movie,
-    main,
 )
 
 
@@ -142,8 +141,21 @@ class TestTrailerSources(unittest.TestCase):
         expected = [
             "https://www.youtube.com/watch?v=YoHD9XEInc0",
             "https://youtu.be/dummy123",
-            "ytsearch1:Inception 2010 official trailer",
-            "ytsearch1:Inception 2010"
+            "ytsearch5:Inception 2010 official trailer",
+            "ytsearch5:Inception 2010"
+        ]
+        self.assertEqual(sources, expected)
+
+    def test_sources_with_year_in_title(self):
+        movie = {
+            "Name": "Robot Riot (2020)",
+            "ProductionYear": 2020,
+            "RemoteTrailers": []
+        }
+        sources = get_trailer_sources(movie)
+        expected = [
+            "ytsearch5:Robot Riot 2020 official trailer",
+            "ytsearch5:Robot Riot 2020"
         ]
         self.assertEqual(sources, expected)
 
@@ -155,8 +167,8 @@ class TestTrailerSources(unittest.TestCase):
         }
         sources = get_trailer_sources(movie)
         expected = [
-            "ytsearch1:Gladiator II 2024 official trailer",
-            "ytsearch1:Gladiator II 2024"
+            "ytsearch5:Gladiator II 2024 official trailer",
+            "ytsearch5:Gladiator II 2024"
         ]
         self.assertEqual(sources, expected)
 
@@ -167,17 +179,23 @@ class TestTrailerSources(unittest.TestCase):
         }
         sources = get_trailer_sources(movie)
         expected = [
-            "ytsearch1:Unknown Mystery official trailer",
-            "ytsearch1:Unknown Mystery"
+            "ytsearch5:Unknown Mystery official trailer",
+            "ytsearch5:Unknown Mystery"
         ]
         self.assertEqual(sources, expected)
 
 
 class TestTrailerFilter(unittest.TestCase):
+    def test_filter_incomplete_returns_none(self):
+        # yt-dlp calls filter with incomplete=True before full metadata is fetched
+        filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
+        reason = filter_fn({"title": None, "duration": None}, incomplete=True)
+        self.assertIsNone(reason)
+
     def test_duration_over_5_minutes(self):
         filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 305, "title": "Inception Official Trailer"}, incomplete=False)
-        self.assertEqual(reason, "Duration > 5min")
+        self.assertIn("Duration > 5min", reason)
 
     def test_duration_too_long_for_short_movie(self):
         # Short film of 300 seconds (5 min) - trailer of 200s is >= 60% of movie
@@ -201,15 +219,20 @@ class TestTrailerFilter(unittest.TestCase):
         reason = filter_fn({"duration": 180, "title": "Dune - Part Two | Official Trailer"}, incomplete=False)
         self.assertIsNone(reason)
 
+    def test_search_filter_handles_seeing_heaven(self):
+        filter_fn = create_trailer_filter("Seeing Heaven", movie_duration_sec=6360, is_search=True)
+        reason = filter_fn({"duration": 182, "title": "Seeing Heaven Trailer - QC Cinema"}, incomplete=False)
+        self.assertIsNone(reason)
+
     def test_search_filter_rejects_missing_keyword(self):
         filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 150, "title": "Inception Full Soundtrack OST"}, incomplete=False)
-        self.assertIn("Rejected. Title:", reason)
+        self.assertIn("Rejected.", reason)
 
     def test_search_filter_rejects_wrong_title(self):
         filter_fn = create_trailer_filter("Inception", movie_duration_sec=7200, is_search=True)
         reason = filter_fn({"duration": 150, "title": "Interstellar Official Trailer"}, incomplete=False)
-        self.assertIn("Rejected. Title:", reason)
+        self.assertIn("Rejected.", reason)
 
     def test_remote_url_filter_accepts_valid_duration_regardless_of_keywords(self):
         # When is_search=False (direct remote trailer URL), it doesn't need cross-check keyword validation
@@ -247,9 +270,10 @@ class TestConfigAndYtdlpOpts(unittest.TestCase):
         self.assertIsNone(cookie_browser)
 
     def test_build_ydl_opts(self):
-        opts = build_ydl_opts("/tmp/test.mp4", lambda x, **k: None, cookie_browser="firefox")
-        self.assertEqual(opts['outtmpl'], "/tmp/test.mp4")
+        opts = build_ydl_opts("/tmp/test.%(ext)s", lambda x, **k: None, cookie_browser="firefox")
+        self.assertEqual(opts['outtmpl'], "/tmp/test.%(ext)s")
         self.assertTrue(opts['geo_bypass'])
+        self.assertEqual(opts['max_downloads'], 1)
         self.assertEqual(opts['cookiesfrombrowser'], ("firefox",))
 
 
@@ -284,7 +308,7 @@ class TestMovieProcessing(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.mappings = {"/media/Movies/": f"{self.test_dir}/"}
-        self.config = ("http://mock-jellyfin:8096", "mock-key", self.mappings, None)
+        self.config = ("http://mock-jellyfin:8096", "mock-key", self.mappings, "firefox")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -350,11 +374,12 @@ class TestMovieProcessing(unittest.TestCase):
             "RemoteTrailers": []
         }
 
-        # Mock YoutubeDL instance behavior to simulate creating a downloaded temp file
+        # Mock YoutubeDL instance behavior to simulate creating a downloaded temp file in outtmpl dir
         def fake_download(urls):
             opts = mock_ydl_class.call_args[0][0]
             outtmpl = opts['outtmpl']
-            with open(outtmpl, "wb") as f:
+            target_file = outtmpl.replace("%(ext)s", "mp4")
+            with open(target_file, "wb") as f:
                 f.write(b"mp4_trailer_bytes")
             return 0
 
@@ -373,6 +398,48 @@ class TestMovieProcessing(unittest.TestCase):
             self.assertEqual(f.read(), b"mp4_trailer_bytes")
 
         mock_refresh.assert_called_once_with("http://mock-jellyfin:8096", "mock-key", "item456")
+
+    @patch("jellyfin_trailer_fetcher.fetch_trailers.yt_dlp.YoutubeDL")
+    def test_process_movie_fallback_from_private_remote_to_search(self, mock_ydl_class):
+        movie_path = os.path.join(self.test_dir, "Robot Riot (2020).mkv")
+        with open(movie_path, "w") as f:
+            f.write("robot riot video")
+
+        movie = {
+            "Id": "item789",
+            "Name": "Robot Riot",
+            "ProductionYear": 2020,
+            "Path": "/media/Movies/Robot Riot (2020).mkv",
+            "LocalTrailerCount": 0,
+            "RemoteTrailers": [{"Url": "https://www.youtube.com/watch?v=private_id"}]
+        }
+
+        # First call (private remote URL) raises exception; second call (search query) succeeds
+        mock_ydl_instance = MagicMock()
+        def fake_download(urls):
+            url = urls[0]
+            if "private_id" in url:
+                raise Exception("ERROR: [youtube] private_id: Video unavailable. This video is private")
+            # Search query succeeds
+            opts = mock_ydl_class.call_args[0][0]
+            # Ensure cookies are still present in options on fallback search!
+            self.assertEqual(opts.get('cookiesfrombrowser'), ("firefox",))
+            outtmpl = opts['outtmpl']
+            target_file = outtmpl.replace("%(ext)s", "mp4")
+            with open(target_file, "wb") as f:
+                f.write(b"robot_riot_trailer_bytes")
+            return 0
+
+        mock_ydl_instance.download.side_effect = fake_download
+        mock_ydl_class.return_value.__enter__.return_value = mock_ydl_instance
+
+        args = MagicMock(dry_run=False, sync=False, rename_original=False)
+        state = {'last_dir': None}
+
+        process_movie(movie, args, state, self.config)
+
+        expected_trailer = os.path.join(self.test_dir, "Robot Riot (2020)-trailer.mp4")
+        self.assertTrue(os.path.exists(expected_trailer))
 
     def test_process_movie_rename_original(self):
         old_movie_path = os.path.join(self.test_dir, "Matrix.1999.1080p.mkv")
