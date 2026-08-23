@@ -468,6 +468,27 @@ def trigger_jellyfin_refresh(jellyfin_url, api_key, item_id):
         return False
 
 
+def print_summary(state, total_movies, dry_run=False, rename_original=False):
+    """Print execution statistics summary."""
+    logger.info("")
+    logger.info("==========================================")
+    logger.info("           TRAILER SYNC SUMMARY           ")
+    logger.info("==========================================")
+    logger.info(f"  Total Movies in Library : {total_movies}")
+    logger.info(f"  Movies Processed        : {state.get('scanned', 0)}")
+    logger.info(f"  Already had Trailer     : {state.get('already_had_trailer', 0)}")
+    if dry_run:
+        logger.info(f"  Trailers Found (Dry-Run): {state.get('downloaded', 0)}")
+    else:
+        logger.info(f"  Trailers Downloaded     : {state.get('downloaded', 0)}")
+    logger.info(f"  No Trailer Found        : {state.get('not_found', 0)}")
+    if state.get('skipped', 0) > 0:
+        logger.info(f"  Skipped (Unreachable)   : {state.get('skipped', 0)}")
+    if rename_original and state.get('renamed', 0) > 0:
+        logger.info(f"  Original Files Renamed  : {state.get('renamed', 0)}")
+    logger.info("==========================================")
+
+
 def process_movie(movie, args, state, config):
     """Process a single movie: check eligibility, search & download trailer, sync."""
     jellyfin_url, api_key, path_mappings, cookie_browser = config
@@ -477,13 +498,17 @@ def process_movie(movie, args, state, config):
     # 1. Check & map path before logging
     local_path = translate_path(path, path_mappings)
     if not local_path:
+        state['skipped'] = state.get('skipped', 0) + 1
         return
 
     # Validate that it is a valid main media file (not trailer, sample, extra, missing)
     valid, reason = is_valid_media_file(local_path)
     if not valid:
         logger.warning(f"Skipping '{raw_title}': {reason} ({local_path})")
+        state['skipped'] = state.get('skipped', 0) + 1
         return
+
+    state['scanned'] = state.get('scanned', 0) + 1
 
     preferred_title, title_variants = resolve_movie_titles(movie, local_path)
 
@@ -526,18 +551,21 @@ def process_movie(movie, args, state, config):
     ]
     if movie.get("LocalTrailerCount", 0) > 0 or any(os.path.exists(cand) for cand in trailer_candidates):
         logger.info("  > Trailer already exists, skipping.")
+        state['already_had_trailer'] = state.get('already_had_trailer', 0) + 1
         return
 
     # 3. OPTIONAL: Rename original file
     if getattr(args, "rename_original", False) and local_path != new_movie_path:
         if args.dry_run:
             logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(new_movie_path)}'")
+            state['renamed'] = state.get('renamed', 0) + 1
         else:
             if not os.path.exists(new_movie_path):
                 try:
                     os.rename(local_path, new_movie_path)
                     logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
                     local_path = new_movie_path
+                    state['renamed'] = state.get('renamed', 0) + 1
                 except Exception as e:
                     logger.error(f"  > Failed to rename file for '{preferred_title}': {e}")
             else:
@@ -593,6 +621,11 @@ def process_movie(movie, args, state, config):
             else:
                 logger.warning(f"  > No suitable trailer found for source ({source}).")
 
+    if download_success:
+        state['downloaded'] = state.get('downloaded', 0) + 1
+    else:
+        state['not_found'] = state.get('not_found', 0) + 1
+
     # 6. API-Sync trigger
     if download_success and getattr(args, "sync", False) and not args.dry_run:
         item_id = movie.get("Id")
@@ -621,11 +654,22 @@ def main(argv=None):
     movies = get_jellyfin_movies(jellyfin_url, api_key)
     logger.info(f"-> {len(movies)} movies found in Jellyfin database.")
 
-    # Dictionary to maintain state across the loop iterations
-    state = {'last_dir': None}
+    # Dictionary to maintain state and statistics across the loop iterations
+    state = {
+        'last_dir': None,
+        'scanned': 0,
+        'already_had_trailer': 0,
+        'downloaded': 0,
+        'not_found': 0,
+        'skipped': 0,
+        'renamed': 0,
+    }
 
     for movie in movies:
         process_movie(movie, args, state, config)
+
+    # Print summary statistics at the end
+    print_summary(state, len(movies), dry_run=args.dry_run, rename_original=args.rename_original)
 
 
 if __name__ == "__main__":
