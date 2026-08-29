@@ -414,6 +414,15 @@ class TestTrailerFilter(unittest.TestCase):
         reason = filter_fn({"duration": 90, "title": "Chang 'An｜Official Trailer - in theaters on July 8th"}, incomplete=False)
         self.assertIsNone(reason)
 
+    def test_search_filter_rejects_unrelated_movie_sharing_one_word(self):
+        # Real-world case: "Chang An" has no contiguous phrase match against "Chang
+        # Can Dunk" (a real, unrelated 2023 Disney movie), so it falls through to the
+        # word-list fallback - which used to strip "An" as a filler word, leaving only
+        # the single generic word "chang" to match on.
+        filter_fn = create_trailer_filter(["Chang An"], movie_duration_sec=6300, is_search=True)
+        reason = filter_fn({"duration": 129, "title": "Chang Can Dunk | Official Trailer | Disney+"}, incomplete=False)
+        self.assertIn("Rejected.", reason)
+
     def test_search_filter_allows_year_right_after_title(self):
         # A release year immediately after the title is a normal trailer title pattern
         # and must not be confused with a franchise/sequel number.

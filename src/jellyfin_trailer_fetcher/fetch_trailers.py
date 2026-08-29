@@ -541,9 +541,14 @@ def create_trailer_filter(title_variants, movie_duration_sec, is_search):
                             continue
                         # Phrase not contiguous - fall back to requiring every significant
                         # word to appear as a whole word (not a substring) somewhere in the
-                        # title, e.g. "Cars" must not match inside "Scars".
+                        # title, e.g. "Cars" must not match inside "Scars". Require at
+                        # least 2 such words: a short title like "Chang An" reduces to the
+                        # single word "chang" once "An" is stripped as a filler word (it's
+                        # part of the proper noun here, not a real article) - matching on
+                        # that alone is too weak and previously matched the real, unrelated
+                        # movie "Chang Can Dunk".
                         words = [w for w in norm_cand.split() if len(w) > 1 and w not in _STOPWORDS]
-                        if words and all(re.search(r'\b' + re.escape(w) + r'\b', norm_yt) for w in words):
+                        if len(words) >= 2 and all(re.search(r'\b' + re.escape(w) + r'\b', norm_yt) for w in words):
                             title_match = True
                             break
                 if title_match:
