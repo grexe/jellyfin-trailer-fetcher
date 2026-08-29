@@ -43,3 +43,9 @@ htmlcov/
 *.mp4
 *.mkv
 *.avi
+
+# .NET / Jellyfin plugin
+bin/
+obj/
+*.user
+
