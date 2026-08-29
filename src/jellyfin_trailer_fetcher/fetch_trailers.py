@@ -201,6 +201,15 @@ def extract_main_title(title):
     return clean, main, first_word
 
 
+_STOPWORDS = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'with'}
+
+
+def _significant_words(text):
+    """Lowercased, punctuation-stripped significant words (filler words excluded)."""
+    norm = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', text.lower())).strip()
+    return {w for w in norm.split() if len(w) > 1 and w not in _STOPWORDS}
+
+
 def resolve_movie_titles(movie, local_path=""):
     """
     Determine preferred title for naming/renaming (honoring Latin locale over CJK/non-Latin)
@@ -223,6 +232,26 @@ def resolve_movie_titles(movie, local_path=""):
     name_cand = cleaned_name or raw_name
     orig_cand = cleaned_orig or original_title
     stem_cand = cleaned_stem or file_stem
+
+    # Jellyfin's "Name" metadata can be wrong in a way that no amount of noise-stripping
+    # fixes: a bad provider match, or an embedded container title tag that's actually
+    # leftover technical junk (e.g. "Chang An ( EAC3 ) CHINESE" for a movie whose file is
+    # correctly named "Chang'e and the Jade Rabbit's Mid-Autumn Adventure"). If less than
+    # half of Name's own significant words are shared with a substantial filename (not
+    # just "movie.mkv"), trust the filename instead. A plain word-disjoint check is too
+    # strict here - "Chang An" and "Chang'e" happen to share the fragment "chang" even
+    # though they're different titles, so this compares overlap as a ratio instead.
+    if (
+        stem_cand and not is_non_latin(stem_cand)
+        and name_cand and not is_non_latin(name_cand)
+        and stem_cand != name_cand
+    ):
+        stem_words = _significant_words(stem_cand)
+        name_words = _significant_words(name_cand)
+        if len(stem_words) >= 2 and name_words:
+            overlap = stem_words & name_words
+            if len(overlap) / len(name_words) < 0.5:
+                name_cand = stem_cand
 
     # Preferred title for display and file naming:
     if not is_non_latin(name_cand):
@@ -449,8 +478,7 @@ def create_trailer_filter(title_variants, movie_duration_sec, is_search):
                         # Phrase not contiguous - fall back to requiring every significant
                         # word to appear as a whole word (not a substring) somewhere in the
                         # title, e.g. "Cars" must not match inside "Scars".
-                        ignore_words = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'with'}
-                        words = [w for w in norm_cand.split() if len(w) > 1 and w not in ignore_words]
+                        words = [w for w in norm_cand.split() if len(w) > 1 and w not in _STOPWORDS]
                         if words and all(re.search(r'\b' + re.escape(w) + r'\b', norm_yt) for w in words):
                             title_match = True
                             break
@@ -482,17 +510,18 @@ def build_ydl_opts(outtmpl_pattern, filter_func, cookie_browser="firefox"):
         'socket_timeout': 15,
         'geo_bypass': True,
         'match_filter': filter_func,
-        # 'web' must come first: only web-family clients honor cookiesfrombrowser for
-        # authenticated/age-restricted access. android/ios are unauthenticated fallbacks
-        # kept for videos that don't need sign-in. (Note: yt-dlp's Python API expects
-        # this as a nested dict, not the "key=value" strings used on the CLI - passing
-        # the CLI-style strings here is silently ignored.)
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['web', 'android', 'ios'],
-            }
-        }
     }
+
+    # Only web-family clients honor cookiesfrombrowser for authenticated/age-restricted
+    # access; android/ios don't support cookies at all and yt-dlp skips them outright
+    # (with a warning) whenever cookies are configured, so listing them just adds noise
+    # and a wasted request. Keep them as fallbacks only when there are no cookies to use.
+    # (Note: yt-dlp's Python API expects extractor_args as a nested dict, not the
+    # "key=value" strings used on the CLI - passing CLI-style strings here is silently
+    # ignored.)
+    player_clients = ['web'] if cookie_browser else ['web', 'android', 'ios']
+    ydl_opts['extractor_args'] = {'youtube': {'player_client': player_clients}}
+
     if cookie_browser:
         ydl_opts['cookiesfrombrowser'] = (cookie_browser,)
 

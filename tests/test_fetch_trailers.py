@@ -132,6 +132,31 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         preferred, variants = resolve_movie_titles(movie, "/path/movie.mkv")
         self.assertEqual(preferred, "Gokiburi-tachi no Tasogare")
 
+    def test_resolve_movie_titles_prefers_filename_over_unrelated_metadata_name(self):
+        # Jellyfin's "Name" metadata can be wrong in a way cleaning can't fix (bad
+        # provider match, or a container title tag full of leftover technical junk).
+        # When the user's own filename shares no words at all with it, trust the
+        # filename over the metadata.
+        movie = {
+            "Name": "Chang An ( EAC3 ) CHINESE",
+            "OriginalTitle": "",
+            "ProductionYear": 2023,
+        }
+        preferred, variants = resolve_movie_titles(
+            movie, "/path/Chang'e and the Jade Rabbit's Mid-Autumn Adventure (2023).mkv"
+        )
+        self.assertEqual(preferred, "Chang'e and the Jade Rabbit's Mid-Autumn Adventure")
+        # The original (possibly still-correct-for-search) metadata name is kept as a
+        # fallback search variant, just no longer the primary/preferred title.
+        self.assertIn("Chang An ( EAC3 ) CHINESE", variants)
+
+    def test_resolve_movie_titles_keeps_metadata_name_when_generic_filename(self):
+        # A generic/uninformative filename (e.g. a bare "movie.mkv") must not override
+        # a legitimate metadata title just because the words happen not to overlap.
+        movie = {"Name": "Interstellar", "OriginalTitle": ""}
+        preferred, variants = resolve_movie_titles(movie, "/path/movie.mkv")
+        self.assertEqual(preferred, "Interstellar")
+
 
 class TestMediaValidation(unittest.TestCase):
     def setUp(self):
@@ -384,6 +409,14 @@ class TestConfigAndYtdlpOpts(unittest.TestCase):
         # (traverse_obj(params, ('extractor_args', 'youtube', 'player_client'))),
         # not the "key=value" CLI string shape - the latter is silently ignored.
         opts = build_ydl_opts("/tmp/test.%(ext)s", lambda x, **k: None, cookie_browser="firefox")
+        player_client = opts['extractor_args']['youtube']['player_client']
+        # With cookies configured, android/ios are skipped by yt-dlp anyway (they don't
+        # support cookies), so only 'web' should be requested to avoid noisy warnings.
+        self.assertEqual(player_client, ['web'])
+
+    def test_build_ydl_opts_extractor_args_no_cookies(self):
+        # Without cookies, android/ios are useful unauthenticated fallbacks.
+        opts = build_ydl_opts("/tmp/test.%(ext)s", lambda x, **k: None, cookie_browser=None)
         player_client = opts['extractor_args']['youtube']['player_client']
         self.assertEqual(player_client, ['web', 'android', 'ios'])
 
