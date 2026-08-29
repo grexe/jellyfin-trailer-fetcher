@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Trailer Fetcher</title>
+</head>
+<body>
+    <div id="TrailerFetcherConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="TrailerFetcherConfigForm">
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="RenameOriginal" name="RenameOriginal" type="checkbox" is="emby-checkbox" />
+                            <span>Rename original movie files</span>
+                        </label>
+                        <div class="fieldDescription">Rename the movie file to match its resolved title, e.g. "Movie Name (Year).ext".</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="MigrateToFolders">Migrate movies into their own folder</label>
+                        <select is="emby-select" id="MigrateToFolders" name="MigrateToFolders" class="emby-select-withcolor emby-select">
+                            <option value="Disabled">Disabled</option>
+                            <option value="TrailersOnly">Only movies with a trailer</option>
+                            <option value="All">Every movie</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Jellyfin only recognizes a local trailer file when the movie has its own dedicated folder
+                            (<a is="emby-linkbutton" class="button-link" href="https://github.com/jellyfin/jellyfin/issues/10077" target="_blank" rel="noopener noreferrer">jellyfin/jellyfin#10077</a>).
+                            A correctly named trailer sitting in a folder shared by other movies is silently ignored.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="TriggerLibraryScan" name="TriggerLibraryScan" type="checkbox" is="emby-checkbox" />
+                            <span>Trigger a library scan after changes</span>
+                        </label>
+                        <div class="fieldDescription">Run a library scan immediately after a trailer is downloaded or a movie is moved, instead of waiting for the next scheduled scan.</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="DryRun" name="DryRun" type="checkbox" is="emby-checkbox" />
+                            <span>Dry run</span>
+                        </label>
+                        <div class="fieldDescription">Log what a manually triggered run would do, without downloading, renaming, or moving anything.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="CookiesFilePath">Cookies file path</label>
+                        <input id="CookiesFilePath" name="CookiesFilePath" type="text" is="emby-input" placeholder="/config/data/trailer-fetcher/cookies.txt" />
+                        <div class="fieldDescription">
+                            Path to a Netscape-format cookies.txt file on the server, used by yt-dlp for authenticated/age-restricted
+                            YouTube access. Leave empty to fetch without authentication.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxTrailerDurationSeconds">Maximum trailer duration (seconds)</label>
+                        <input id="MaxTrailerDurationSeconds" name="MaxTrailerDurationSeconds" type="number" is="emby-input" min="30" />
+                        <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var TrailerFetcherConfig = {
+                pluginUniqueId: '03385b47-ccda-4a9e-86a2-c0b1f80fa332'
+            };
+
+            document.querySelector('#TrailerFetcherConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#RenameOriginal').checked = config.RenameOriginal;
+                        document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;
+                        document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
+                        document.querySelector('#DryRun').checked = config.DryRun;
+                        document.querySelector('#CookiesFilePath').value = config.CookiesFilePath;
+                        document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#TrailerFetcherConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
+                        config.RenameOriginal = document.querySelector('#RenameOriginal').checked;
+                        config.MigrateToFolders = document.querySelector('#MigrateToFolders').value;
+                        config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
+                        config.DryRun = document.querySelector('#DryRun').checked;
+                        config.CookiesFilePath = document.querySelector('#CookiesFilePath').value;
+                        config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
+                        ApiClient.updatePluginConfiguration(TrailerFetcherConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>
