@@ -364,6 +364,21 @@ def get_trailer_sources(movie, local_path=""):
     return sources_to_try
 
 
+# A release year right after a matched title is normal ("Inception 2010 Trailer").
+# A short number/roman-numeral/"Part N" is not - it usually means the search matched
+# the title of a *different* installment of a franchise (e.g. candidate "Iron Man"
+# matching inside "Iron Man 2 Official Trailer").
+_YEAR_SUFFIX_RE = re.compile(r'^(19\d{2}|20\d{2})\b')
+_SEQUEL_SUFFIX_RE = re.compile(r'^(\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x|part\s*\d{1,2}|chapter\s*\d{1,2})\b')
+
+
+def _title_suffix_allowed(remainder):
+    """Whether the text right after a matched title candidate still counts as a match."""
+    if not remainder or _YEAR_SUFFIX_RE.match(remainder):
+        return True
+    return not _SEQUEL_SUFFIX_RE.match(remainder)
+
+
 def create_trailer_filter(title_variants, movie_duration_sec, is_search):
     """Create a yt-dlp match_filter function for trailers."""
     if isinstance(title_variants, str):
@@ -397,7 +412,19 @@ def create_trailer_filter(title_variants, movie_duration_sec, is_search):
             title_match = False
             for tv in title_variants:
                 clean_t, main_t, first_w = extract_main_title(tv)
-                for cand in (clean_t, main_t, first_w):
+                # For Latin titles, only try first_w as its own candidate when the main
+                # title genuinely is a single word (e.g. "DAKAICHI"). Otherwise first_w
+                # is just the first word of a longer main_t (e.g. "Iron" from "Iron
+                # Man") - too generic to match on alone without risking a wrong movie.
+                # Non-Latin (e.g. Japanese) titles keep first_w unconditionally, since
+                # PV/teaser titles commonly use just the short proper-noun title and
+                # accidental collisions with an unrelated common word are far less
+                # likely there than with short English words.
+                if is_non_latin(clean_t) or main_t == first_w:
+                    candidates = [clean_t, main_t, first_w]
+                else:
+                    candidates = [clean_t, main_t]
+                for cand in candidates:
                     cand_lower = cand.lower().strip()
                     if not cand_lower:
                         continue
@@ -407,13 +434,24 @@ def create_trailer_filter(title_variants, movie_duration_sec, is_search):
                             break
                     else:
                         norm_cand = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', cand_lower)).strip()
-                        if cand_lower in yt_title or (norm_cand and norm_cand in norm_yt):
-                            title_match = True
-                            break
-                        # Check significant words (exclude filler words)
+                        if not norm_cand:
+                            continue
+                        phrase_match = re.search(r'\b' + re.escape(norm_cand) + r'\b', norm_yt)
+                        if phrase_match:
+                            if _title_suffix_allowed(norm_yt[phrase_match.end():].strip()):
+                                title_match = True
+                                break
+                            # The full phrase matched, but is immediately followed by what
+                            # looks like a different installment's number - reject this
+                            # candidate rather than falling through to the looser word-list
+                            # check below, which would match just as wrongly.
+                            continue
+                        # Phrase not contiguous - fall back to requiring every significant
+                        # word to appear as a whole word (not a substring) somewhere in the
+                        # title, e.g. "Cars" must not match inside "Scars".
                         ignore_words = {'the', 'a', 'an', 'der', 'die', 'das', 'le', 'la', 'les', 'el', 'los', 'il', 'lo', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'with'}
                         words = [w for w in norm_cand.split() if len(w) > 1 and w not in ignore_words]
-                        if words and all(w in norm_yt for w in words):
+                        if words and all(re.search(r'\b' + re.escape(w) + r'\b', norm_yt) for w in words):
                             title_match = True
                             break
                 if title_match:
@@ -444,8 +482,15 @@ def build_ydl_opts(outtmpl_pattern, filter_func, cookie_browser="firefox"):
         'socket_timeout': 15,
         'geo_bypass': True,
         'match_filter': filter_func,
+        # 'web' must come first: only web-family clients honor cookiesfrombrowser for
+        # authenticated/age-restricted access. android/ios are unauthenticated fallbacks
+        # kept for videos that don't need sign-in. (Note: yt-dlp's Python API expects
+        # this as a nested dict, not the "key=value" strings used on the CLI - passing
+        # the CLI-style strings here is silently ignored.)
         'extractor_args': {
-            'youtube': ['player_client=android,web,ios', 'po_token=generated']
+            'youtube': {
+                'player_client': ['web', 'android', 'ios'],
+            }
         }
     }
     if cookie_browser:
@@ -454,17 +499,24 @@ def build_ydl_opts(outtmpl_pattern, filter_func, cookie_browser="firefox"):
     return ydl_opts
 
 
-def trigger_jellyfin_refresh(jellyfin_url, api_key, item_id):
-    """Trigger a metadata refresh in Jellyfin for a specific item."""
-    url = f"{jellyfin_url}/Items/{item_id}/Refresh"
+def trigger_jellyfin_library_scan(jellyfin_url, api_key):
+    """Trigger a full Jellyfin library scan (equivalent to the "Scan All Libraries"
+    dashboard button).
+
+    Discovering a newly-added local trailer file is a filesystem-resolution step that
+    happens during a library scan, not during a per-item metadata refresh
+    (/Items/{id}/Refresh only re-fetches metadata/images for an item already in the DB
+    and does not reliably pick up new sibling files). Call this once after all movies
+    have been processed rather than once per item.
+    """
+    url = f"{jellyfin_url}/Library/Refresh"
     headers = get_jellyfin_headers(api_key)
-    params = {"Recursive": "true", "MetadataRefreshMode": "Default", "ImageRefreshMode": "Default"}
     try:
-        response = requests.post(url, headers=headers, params=params, timeout=10)
+        response = requests.post(url, headers=headers, timeout=15)
         response.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"Failed to trigger API sync for item ID '{item_id}': {e}")
+        logger.error(f"Failed to trigger Jellyfin library scan: {e}")
         return False
 
 
@@ -490,8 +542,8 @@ def print_summary(state, total_movies, dry_run=False, rename_original=False):
 
 
 def process_movie(movie, args, state, config):
-    """Process a single movie: check eligibility, search & download trailer, sync."""
-    jellyfin_url, api_key, path_mappings, cookie_browser = config
+    """Process a single movie: check eligibility, search & download trailer."""
+    _, _, path_mappings, cookie_browser = config
     raw_title = movie.get("Name", "Unknown")
     path = movie.get("Path", "")
     
@@ -611,7 +663,20 @@ def process_movie(movie, args, state, config):
 
             if downloaded_files:
                 downloaded_file = downloaded_files[0]
-                shutil.copy2(downloaded_file, trailer_filename)
+                # Copy to a temp name on the destination volume first, then atomically
+                # rename into place. A direct copy2() to the final name would leave a
+                # truncated file with the "real" filename if interrupted mid-copy (e.g.
+                # an NFS hiccup), and a later run would mistake it for a valid trailer.
+                tmp_dest = trailer_filename + ".part"
+                try:
+                    shutil.copy2(downloaded_file, tmp_dest)
+                    os.replace(tmp_dest, trailer_filename)
+                except OSError as e:
+                    logger.warning(f"  > Copy to destination failed: {e}")
+                finally:
+                    if os.path.exists(tmp_dest):
+                        os.remove(tmp_dest)
+
                 if os.path.exists(trailer_filename) and os.path.getsize(trailer_filename) > 0:
                     logger.info(f"  > Trailer successfully saved: {os.path.basename(trailer_filename)}")
                     download_success = True
@@ -626,18 +691,11 @@ def process_movie(movie, args, state, config):
     else:
         state['not_found'] = state.get('not_found', 0) + 1
 
-    # 6. API-Sync trigger
-    if download_success and getattr(args, "sync", False) and not args.dry_run:
-        item_id = movie.get("Id")
-        if item_id:
-            logger.info(f"  > Triggering Jellyfin metadata refresh for '{preferred_title}' (ID: {item_id})...")
-            trigger_jellyfin_refresh(jellyfin_url, api_key, item_id)
-
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Download missing movie trailers for Jellyfin.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without modifying anything.")
-    parser.add_argument("--sync", action="store_true", help="Trigger a Jellyfin metadata scan after download.")
+    parser.add_argument("--sync", action="store_true", help="Trigger a single Jellyfin library scan after all downloads complete.")
     parser.add_argument("--rename-original", action="store_true", help="Rename the original movie file to match the metadata title.")
     args = parser.parse_args(argv)
 
@@ -670,6 +728,15 @@ def main(argv=None):
 
     # Print summary statistics at the end
     print_summary(state, len(movies), dry_run=args.dry_run, rename_original=args.rename_original)
+
+    # Trigger a single library scan (not one per movie) so Jellyfin picks up every
+    # newly downloaded trailer file in one pass.
+    if args.sync and not args.dry_run:
+        if state.get('downloaded', 0) > 0:
+            logger.info(f"Triggering a Jellyfin library scan to pick up {state['downloaded']} new trailer(s)...")
+            trigger_jellyfin_library_scan(jellyfin_url, api_key)
+        else:
+            logger.info("No new trailers downloaded; skipping Jellyfin library scan.")
 
 
 if __name__ == "__main__":

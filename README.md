@@ -10,7 +10,7 @@ A lightweight local Python tool that fetches movie metadata from a Jellyfin inst
 * **Media Validation:** Validates video media files and ignores sample files, cover art, extras, or existing trailers.
 * **NFS/NAS Path Mapping:** Translates Jellyfin server paths to local mount points.
 * **Dry-Run Mode:** Safely preview actions without downloading files or making changes.
-* **Jellyfin Sync:** Automatically triggers a metadata refresh for updated items.
+* **Jellyfin Sync:** Optionally triggers a single full Jellyfin library scan after all trailers have been downloaded, so newly added local trailer files are picked up.
 
 ## Prerequisites
 

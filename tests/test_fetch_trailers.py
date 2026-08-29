@@ -21,7 +21,7 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     build_ydl_opts,
     load_config,
     get_jellyfin_movies,
-    trigger_jellyfin_refresh,
+    trigger_jellyfin_library_scan,
     process_movie,
 )
 
@@ -317,6 +317,32 @@ class TestTrailerFilter(unittest.TestCase):
         reason = filter_fn({"duration": 150, "title": "Interstellar Official Trailer"}, incomplete=False)
         self.assertIn("Rejected.", reason)
 
+    def test_search_filter_allows_year_right_after_title(self):
+        # A release year immediately after the title is a normal trailer title pattern
+        # and must not be confused with a franchise/sequel number.
+        filter_fn = create_trailer_filter(["It"], movie_duration_sec=6000, is_search=True)
+        reason = filter_fn({"duration": 140, "title": "IT (2017) Official Trailer"}, incomplete=False)
+        self.assertIsNone(reason)
+
+    def test_search_filter_rejects_wrong_sequel_installment(self):
+        # Searching for "Iron Man" must not accept a result for "Iron Man 2".
+        filter_fn = create_trailer_filter(["Iron Man"], movie_duration_sec=7200, is_search=True)
+        reason = filter_fn({"duration": 150, "title": "Iron Man 2 Official Trailer"}, incomplete=False)
+        self.assertIn("Rejected.", reason)
+
+    def test_search_filter_matches_correct_sequel_installment(self):
+        # Searching for "Iron Man 2" itself must still match its own trailer.
+        filter_fn = create_trailer_filter(["Iron Man 2"], movie_duration_sec=7200, is_search=True)
+        reason = filter_fn({"duration": 150, "title": "Iron Man 2 Official Trailer"}, incomplete=False)
+        self.assertIsNone(reason)
+
+    def test_search_filter_rejects_substring_within_longer_word(self):
+        # "Cars" must not match a video whose title merely contains "cars" as a
+        # substring of an unrelated word like "Scars".
+        filter_fn = create_trailer_filter(["Cars"], movie_duration_sec=6000, is_search=True)
+        reason = filter_fn({"duration": 140, "title": "Scars Official Trailer"}, incomplete=False)
+        self.assertIn("Rejected.", reason)
+
 
 class TestConfigAndYtdlpOpts(unittest.TestCase):
     @patch.dict(os.environ, {
@@ -353,6 +379,14 @@ class TestConfigAndYtdlpOpts(unittest.TestCase):
         self.assertEqual(opts['max_downloads'], 1)
         self.assertEqual(opts['cookiesfrombrowser'], ("firefox",))
 
+    def test_build_ydl_opts_extractor_args_shape(self):
+        # extractor_args must be the nested-dict shape yt-dlp's Python API expects
+        # (traverse_obj(params, ('extractor_args', 'youtube', 'player_client'))),
+        # not the "key=value" CLI string shape - the latter is silently ignored.
+        opts = build_ydl_opts("/tmp/test.%(ext)s", lambda x, **k: None, cookie_browser="firefox")
+        player_client = opts['extractor_args']['youtube']['player_client']
+        self.assertEqual(player_client, ['web', 'android', 'ios'])
+
 
 class TestJellyfinAPI(unittest.TestCase):
     @patch("requests.get")
@@ -373,11 +407,15 @@ class TestJellyfinAPI(unittest.TestCase):
         self.assertEqual(movies[1]["Name"], "Z")
 
     @patch("requests.post")
-    def test_trigger_jellyfin_refresh(self, mock_post):
+    def test_trigger_jellyfin_library_scan(self, mock_post):
         mock_post.return_value.raise_for_status.return_value = None
-        success = trigger_jellyfin_refresh("http://localhost:8096", "key", "item123")
+        success = trigger_jellyfin_library_scan("http://localhost:8096", "key")
         self.assertTrue(success)
-        mock_post.assert_called_once()
+        mock_post.assert_called_once_with(
+            "http://localhost:8096/Library/Refresh",
+            headers={"Authorization": 'MediaBrowser Token="key"'},
+            timeout=15,
+        )
 
 
 class TestMovieProcessing(unittest.TestCase):
