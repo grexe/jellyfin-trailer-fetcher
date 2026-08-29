@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.1.0.0"
+version: "0.2.0.0"
 targetAbi: "10.10.0.0"
 framework: "net8.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -16,7 +16,11 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.2.0.0: Cookie file upload (for authenticated/age-restricted YouTube access) and
+  per-library scan scoping. Trailer search/download and folder migration logic
+  ported from the standalone script still lands in a follow-up release - this
+  build is for settings/wiring testing only, it does not fetch trailers yet.
+
+
   0.1.0.0: Initial plugin skeleton - configuration page and scheduled task wiring.
-  Trailer search/download and folder migration logic ported from the standalone
-  script land in follow-up releases.
 ---

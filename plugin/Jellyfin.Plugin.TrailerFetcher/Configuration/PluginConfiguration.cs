@@ -1,3 +1,4 @@
+using System;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.TrailerFetcher.Configuration;
@@ -45,6 +46,7 @@ public class PluginConfiguration : BasePluginConfiguration
         TriggerLibraryScan = true;
         CookiesFilePath = string.Empty;
         MaxTrailerDurationSeconds = 300;
+        LibraryIds = Array.Empty<string>();
     }
 
     /// <summary>
@@ -87,4 +89,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// a full movie, compilation, or unrelated video.
     /// </summary>
     public int MaxTrailerDurationSeconds { get; set; }
+
+    /// <summary>
+    /// Gets or sets the library (VirtualFolder) ids to scan for missing trailers, by
+    /// their <c>ItemId</c> as reported by <c>ILibraryManager.GetVirtualFolders()</c>.
+    /// An empty array means every library is scanned.
+    /// </summary>
+    public string[] LibraryIds { get; set; }
 }

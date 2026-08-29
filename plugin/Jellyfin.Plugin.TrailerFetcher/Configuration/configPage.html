@@ -9,6 +9,12 @@
         <div data-role="content">
             <div class="content-primary">
                 <form id="TrailerFetcherConfigForm">
+                    <div class="verticalSection">
+                        <h3 class="checkboxListLabel">Libraries to scan</h3>
+                        <div id="LibrariesList" class="checkboxList">Loading libraries&hellip;</div>
+                        <div class="fieldDescription">Leave all unchecked to scan every library. Only libraries actually containing movies are useful here.</div>
+                    </div>
+
                     <div class="checkboxContainer checkboxContainer-withDescription">
                         <label class="emby-checkbox-label">
                             <input id="RenameOriginal" name="RenameOriginal" type="checkbox" is="emby-checkbox" />
@@ -99,6 +105,48 @@
                 return 'MediaBrowser Token="' + ApiClient.accessToken() + '"';
             }
 
+            function loadLibraries(selectedIds) {
+                var listEl = document.querySelector('#LibrariesList');
+                fetch(ApiClient.serverAddress() + '/TrailerFetcher/Libraries', {
+                    headers: { 'Authorization': authHeader() }
+                }).then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Failed to list libraries: ' + response.status);
+                    }
+                    return response.json();
+                }).then(function (libraries) {
+                    listEl.innerHTML = '';
+                    if (!libraries.length) {
+                        listEl.textContent = 'No libraries found.';
+                        return;
+                    }
+                    libraries.forEach(function (lib) {
+                        var container = document.createElement('div');
+                        container.className = 'checkboxContainer';
+
+                        var label = document.createElement('label');
+                        label.className = 'emby-checkbox-label';
+
+                        var input = document.createElement('input');
+                        input.type = 'checkbox';
+                        input.setAttribute('is', 'emby-checkbox');
+                        input.className = 'chkLibrary';
+                        input.value = lib.id;
+                        input.checked = selectedIds.indexOf(lib.id) !== -1;
+
+                        var span = document.createElement('span');
+                        span.textContent = lib.name + (lib.collectionType ? ' (' + lib.collectionType + ')' : '');
+
+                        label.appendChild(input);
+                        label.appendChild(span);
+                        container.appendChild(label);
+                        listEl.appendChild(container);
+                    });
+                }).catch(function (err) {
+                    listEl.textContent = 'Failed to load libraries: ' + err.message;
+                });
+            }
+
             document.querySelector('#TrailerFetcherConfigPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -109,6 +157,7 @@
                         document.querySelector('#DryRun').checked = config.DryRun;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         updateCookiesStatus(config.CookiesFilePath);
+                        loadLibraries(config.LibraryIds || []);
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -177,6 +226,9 @@
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
+                        config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
+                            return el.value;
+                        });
                         ApiClient.updatePluginConfiguration(TrailerFetcherConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });

@@ -7,9 +7,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+/build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
@@ -48,4 +48,5 @@ htmlcov/
 bin/
 obj/
 *.user
+plugin/publish/
 

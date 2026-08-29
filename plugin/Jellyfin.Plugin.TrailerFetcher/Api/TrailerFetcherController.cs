@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -10,10 +14,28 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.TrailerFetcher.Api;
 
 /// <summary>
-/// Handles uploading/removing the yt-dlp cookies file from the plugin's settings page.
-/// A headless server has no browser profile to read cookies from directly (unlike the
-/// standalone script's --cookie-browser), so authenticated/age-restricted YouTube
-/// access instead relies on an exported Netscape-format cookies.txt uploaded here.
+/// A library the admin can pick to scope scanning to, as shown on the settings page.
+/// </summary>
+/// <param name="Id">The library's ItemId (a Guid, as a string).</param>
+/// <param name="Name">The library's display name.</param>
+/// <param name="CollectionType">The library's configured content type (e.g. "movies"), if any.</param>
+/// <remarks>
+/// Property names are pinned explicitly to camelCase via <see cref="JsonPropertyNameAttribute"/>
+/// rather than relying on Jellyfin's host-level JSON casing configuration (which serializes
+/// most of its own API PascalCase), so the settings page's JS can rely on a fixed casing
+/// regardless of how that global option is set.
+/// </remarks>
+public record LibraryInfoDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("collectionType")] string? CollectionType);
+
+/// <summary>
+/// Handles uploading/removing the yt-dlp cookies file, and listing libraries, from the
+/// plugin's settings page. A headless server has no browser profile to read cookies
+/// from directly (unlike the standalone script's --cookie-browser), so authenticated/
+/// age-restricted YouTube access instead relies on an exported Netscape-format
+/// cookies.txt uploaded here.
 /// </summary>
 [ApiController]
 [Authorize(Policy = Policies.RequiresElevation)]
@@ -24,14 +46,31 @@ public class TrailerFetcherController : ControllerBase
     private const long MaxCookiesFileBytes = 2 * 1024 * 1024; // 2 MB is generous for a cookie jar
 
     private readonly ILogger<TrailerFetcherController> _logger;
+    private readonly ILibraryManager _libraryManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TrailerFetcherController"/> class.
     /// </summary>
     /// <param name="logger">Instance of the <see cref="ILogger{TrailerFetcherController}"/> interface.</param>
-    public TrailerFetcherController(ILogger<TrailerFetcherController> logger)
+    /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+    public TrailerFetcherController(ILogger<TrailerFetcherController> logger, ILibraryManager libraryManager)
     {
         _logger = logger;
+        _libraryManager = libraryManager;
+    }
+
+    /// <summary>
+    /// Lists the server's libraries, for the settings page to offer as scan-scope choices.
+    /// </summary>
+    /// <returns>The list of libraries.</returns>
+    [HttpGet("Libraries")]
+    public ActionResult<IEnumerable<LibraryInfoDto>> GetLibraries()
+    {
+        var libraries = _libraryManager.GetVirtualFolders()
+            .Select(f => new LibraryInfoDto(f.ItemId, f.Name, f.CollectionType?.ToString()))
+            .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return Ok(libraries);
     }
 
     /// <summary>

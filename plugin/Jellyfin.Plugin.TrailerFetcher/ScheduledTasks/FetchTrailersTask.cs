@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -66,8 +67,35 @@ public class FetchTrailersTask : IScheduledTask
             IsVirtualItem = false
         };
 
+        var libraryIds = config.LibraryIds ?? Array.Empty<string>();
+        if (libraryIds.Length > 0)
+        {
+            var parsedIds = new List<Guid>();
+            foreach (var id in libraryIds)
+            {
+                if (Guid.TryParse(id, out var guid))
+                {
+                    parsedIds.Add(guid);
+                }
+                else
+                {
+                    _logger.LogWarning("Configured library id '{Id}' is not a valid GUID, skipping it.", id);
+                }
+            }
+
+            if (parsedIds.Count > 0)
+            {
+                query.TopParentIds = parsedIds.ToArray();
+                _logger.LogInformation("Scanning {Count} selected librar{Suffix} only.", parsedIds.Count, parsedIds.Count == 1 ? "y" : "ies");
+            }
+        }
+        else
+        {
+            _logger.LogInformation("No specific libraries selected - scanning all libraries.");
+        }
+
         var movies = _libraryManager.GetItemList(query);
-        _logger.LogInformation("Found {Count} movie(s) in the library.", movies.Count);
+        _logger.LogInformation("Found {Count} movie(s) to process.", movies.Count);
 
         progress.Report(100);
         return Task.CompletedTask;

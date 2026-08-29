@@ -1,0 +1,20 @@
+[
+  {
+    "guid": "03385b47-ccda-4a9e-86a2-c0b1f80fa332",
+    "name": "Trailer Fetcher",
+    "description": "Finds and downloads missing local movie trailers from YouTube via yt-dlp.",
+    "overview": "Finds and downloads missing local movie trailers from YouTube via yt-dlp.",
+    "owner": "grexe",
+    "category": "General",
+    "versions": [
+      {
+        "version": "0.2.0.0",
+        "changelog": "Cookie file upload (for authenticated/age-restricted YouTube access) and per-library scan scoping. Trailer search/download and folder migration logic ported from the standalone script still lands in a follow-up release - this build is for settings/wiring testing only, it does not fetch trailers yet.",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.2.0.0.zip",
+        "checksum": "2d868fc8fd064891bbc65c54d7f09e4a",
+        "timestamp": "2026-08-29T19:39:13Z"
+      }
+    ]
+  }
+]
