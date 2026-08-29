@@ -567,7 +567,95 @@ def print_summary(state, total_movies, dry_run=False, rename_original=False):
         logger.info(f"  Skipped (Unreachable)   : {state.get('skipped', 0)}")
     if rename_original and state.get('renamed', 0) > 0:
         logger.info(f"  Original Files Renamed  : {state.get('renamed', 0)}")
+    if state.get('migrated', 0) > 0:
+        logger.info(f"  Migrated to Own Folder  : {state.get('migrated', 0)}")
     logger.info("==========================================")
+
+
+def _is_sidecar_of(entry_stem, movie_stem):
+    """Whether a filename (without extension) belongs to the given movie: an exact
+    match, or a suffix attached with '.', '-' or '_' (subtitles like "Movie.eng.srt",
+    artwork like "Movie-poster.jpg", or a trailer we previously created like
+    "Movie-trailer.mp4")."""
+    return entry_stem == movie_stem or any(
+        entry_stem.startswith(movie_stem + sep) for sep in ('.', '-', '_')
+    )
+
+
+def migrate_movie_to_own_folder(local_path, dry_run=False, extra_stems=()):
+    """
+    Move a movie file - and any sidecar files that belong to it (subtitles, .nfo,
+    artwork, an already-downloaded trailer) - into a dedicated subfolder named after
+    the movie file itself.
+
+    Jellyfin's local-extras resolver only recognizes a local trailer when the movie
+    has its own folder; in a flat folder shared by multiple movies, a correctly named
+    "<title>-trailer.mp4" is silently ignored regardless of naming
+    (https://github.com/jellyfin/jellyfin/issues/10077). `extra_stems` should include
+    the title-based stem used for the trailer filename in case it differs from the
+    movie file's own (possibly still-messy) name.
+
+    Returns (new_local_path, moved) where `moved` is True if something was (or, in
+    dry-run mode, would be) moved. Safe to call repeatedly: a movie already living in
+    its own folder is left untouched.
+    """
+    current_dir = os.path.dirname(local_path)
+    movie_stem, _ = os.path.splitext(os.path.basename(local_path))
+
+    # Already in its own folder - nothing to do. Keeps repeated runs idempotent.
+    if os.path.basename(current_dir) == movie_stem:
+        return local_path, False
+
+    target_dir = os.path.join(current_dir, movie_stem)
+    stems_to_match = {movie_stem, *[s for s in extra_stems if s]}
+
+    try:
+        sibling_names = os.listdir(current_dir)
+    except OSError as e:
+        logger.warning(f"  > Could not list '{current_dir}' for migration: {e}")
+        return local_path, False
+
+    files_to_move = []
+    for name in sibling_names:
+        entry_path = os.path.join(current_dir, name)
+        if not os.path.isfile(entry_path):
+            continue
+        entry_stem, _ = os.path.splitext(name)
+        if any(_is_sidecar_of(entry_stem, stem) for stem in stems_to_match):
+            files_to_move.append(name)
+
+    if not files_to_move:
+        return local_path, False
+
+    if dry_run:
+        logger.info(f"  > [DRY-RUN] Would move into own folder '{movie_stem}/': {', '.join(files_to_move)}")
+        return local_path, True
+
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except OSError as e:
+        logger.error(f"  > Failed to create folder '{target_dir}': {e}")
+        return local_path, False
+
+    new_local_path = local_path
+    moved_count = 0
+    for name in files_to_move:
+        src = os.path.join(current_dir, name)
+        dst = os.path.join(target_dir, name)
+        if os.path.exists(dst):
+            logger.warning(f"  > Migration target '{dst}' already exists, leaving '{src}' in place.")
+            continue
+        try:
+            shutil.move(src, dst)
+            moved_count += 1
+            if src == local_path:
+                new_local_path = dst
+        except OSError as e:
+            logger.error(f"  > Failed to move '{src}' to '{dst}': {e}")
+
+    if moved_count:
+        logger.info(f"  > Moved {moved_count} file(s) into own folder: '{movie_stem}/'")
+    return new_local_path, moved_count > 0
 
 
 def process_movie(movie, args, state, config):
@@ -630,95 +718,109 @@ def process_movie(movie, args, state, config):
         os.path.join(folder_path, "trailer.mp4"),
         os.path.join(folder_path, "trailer.mkv")
     ]
-    if movie.get("LocalTrailerCount", 0) > 0 or any(os.path.exists(cand) for cand in trailer_candidates):
-        logger.info("  > Trailer already exists, skipping.")
-        state['already_had_trailer'] = state.get('already_had_trailer', 0) + 1
-        return
-
-    # 3. OPTIONAL: Rename original file
-    if getattr(args, "rename_original", False) and local_path != new_movie_path:
-        if args.dry_run:
-            logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(new_movie_path)}'")
-            state['renamed'] = state.get('renamed', 0) + 1
-        else:
-            if not os.path.exists(new_movie_path):
-                try:
-                    os.rename(local_path, new_movie_path)
-                    logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
-                    local_path = new_movie_path
-                    state['renamed'] = state.get('renamed', 0) + 1
-                except Exception as e:
-                    logger.error(f"  > Failed to rename file for '{preferred_title}': {e}")
-            else:
-                logger.warning(f"  > Target file '{os.path.basename(new_movie_path)}' already exists. Skipping rename.")
-
-    # 4. Determine sources for trailer download
-    sources_to_try = get_trailer_sources(movie, local_path)
-
-    # 5. yt-dlp Configuration & Improved Filter Logic
-    log_prefix = "[DRY-RUN] " if args.dry_run else ""
+    already_had_trailer = movie.get("LocalTrailerCount", 0) > 0 or any(os.path.exists(cand) for cand in trailer_candidates)
     download_success = False
 
-    for source in sources_to_try:
-        is_search = source.startswith("ytsearch")
-        logger.info(f"  > {log_prefix}Fetching trailer via {'Search' if is_search else 'Remote-URL'} ({source})...")
-
-        if args.dry_run:
-            logger.info(f"  > [DRY-RUN] Will save as: '{os.path.basename(trailer_filename)}'")
-            download_success = True
-            break
-
-        current_trailer_filter = create_trailer_filter(title_variants, movie_duration_sec, is_search)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_pattern = os.path.join(tmp_dir, "trailer.%(ext)s")
-            ydl_opts = build_ydl_opts(tmp_pattern, current_trailer_filter, cookie_browser=cookie_browser)
-
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([source])
-            except MaxDownloadsReached:
-                # MaxDownloadsReached is raised when max_downloads limit is reached, indicating success
-                pass
-            except Exception as e:
-                # Video unavailable / private / network error on this source; proceed to next source
-                logger.warning(f"  > Source '{source}' failed ({e}). Trying next source...")
-
-            # Check if a file was downloaded in tmp_dir
-            downloaded_files = [
-                os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
-                if os.path.isfile(os.path.join(tmp_dir, f)) and os.path.getsize(os.path.join(tmp_dir, f)) > 0
-            ]
-
-            if downloaded_files:
-                downloaded_file = downloaded_files[0]
-                # Copy to a temp name on the destination volume first, then atomically
-                # rename into place. A direct copy2() to the final name would leave a
-                # truncated file with the "real" filename if interrupted mid-copy (e.g.
-                # an NFS hiccup), and a later run would mistake it for a valid trailer.
-                tmp_dest = trailer_filename + ".part"
-                try:
-                    shutil.copy2(downloaded_file, tmp_dest)
-                    os.replace(tmp_dest, trailer_filename)
-                except OSError as e:
-                    logger.warning(f"  > Copy to destination failed: {e}")
-                finally:
-                    if os.path.exists(tmp_dest):
-                        os.remove(tmp_dest)
-
-                if os.path.exists(trailer_filename) and os.path.getsize(trailer_filename) > 0:
-                    logger.info(f"  > Trailer successfully saved: {os.path.basename(trailer_filename)}")
-                    download_success = True
-                    break
-                else:
-                    logger.warning(f"  > Copy failed or file is empty on remote: {trailer_filename}")
-            else:
-                logger.warning(f"  > No suitable trailer found for source ({source}).")
-
-    if download_success:
-        state['downloaded'] = state.get('downloaded', 0) + 1
+    if already_had_trailer:
+        logger.info("  > Trailer already exists, skipping.")
+        state['already_had_trailer'] = state.get('already_had_trailer', 0) + 1
     else:
-        state['not_found'] = state.get('not_found', 0) + 1
+        # 3. OPTIONAL: Rename original file
+        if getattr(args, "rename_original", False) and local_path != new_movie_path:
+            if args.dry_run:
+                logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(new_movie_path)}'")
+                state['renamed'] = state.get('renamed', 0) + 1
+            else:
+                if not os.path.exists(new_movie_path):
+                    try:
+                        os.rename(local_path, new_movie_path)
+                        logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
+                        local_path = new_movie_path
+                        state['renamed'] = state.get('renamed', 0) + 1
+                    except Exception as e:
+                        logger.error(f"  > Failed to rename file for '{preferred_title}': {e}")
+                else:
+                    logger.warning(f"  > Target file '{os.path.basename(new_movie_path)}' already exists. Skipping rename.")
+
+        # 4. Determine sources for trailer download
+        sources_to_try = get_trailer_sources(movie, local_path)
+
+        # 5. yt-dlp Configuration & Improved Filter Logic
+        log_prefix = "[DRY-RUN] " if args.dry_run else ""
+
+        for source in sources_to_try:
+            is_search = source.startswith("ytsearch")
+            logger.info(f"  > {log_prefix}Fetching trailer via {'Search' if is_search else 'Remote-URL'} ({source})...")
+
+            if args.dry_run:
+                logger.info(f"  > [DRY-RUN] Will save as: '{os.path.basename(trailer_filename)}'")
+                download_success = True
+                break
+
+            current_trailer_filter = create_trailer_filter(title_variants, movie_duration_sec, is_search)
+
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_pattern = os.path.join(tmp_dir, "trailer.%(ext)s")
+                ydl_opts = build_ydl_opts(tmp_pattern, current_trailer_filter, cookie_browser=cookie_browser)
+
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([source])
+                except MaxDownloadsReached:
+                    # MaxDownloadsReached is raised when max_downloads limit is reached, indicating success
+                    pass
+                except Exception as e:
+                    # Video unavailable / private / network error on this source; proceed to next source
+                    logger.warning(f"  > Source '{source}' failed ({e}). Trying next source...")
+
+                # Check if a file was downloaded in tmp_dir
+                downloaded_files = [
+                    os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
+                    if os.path.isfile(os.path.join(tmp_dir, f)) and os.path.getsize(os.path.join(tmp_dir, f)) > 0
+                ]
+
+                if downloaded_files:
+                    downloaded_file = downloaded_files[0]
+                    # Copy to a temp name on the destination volume first, then atomically
+                    # rename into place. A direct copy2() to the final name would leave a
+                    # truncated file with the "real" filename if interrupted mid-copy (e.g.
+                    # an NFS hiccup), and a later run would mistake it for a valid trailer.
+                    tmp_dest = trailer_filename + ".part"
+                    try:
+                        shutil.copy2(downloaded_file, tmp_dest)
+                        os.replace(tmp_dest, trailer_filename)
+                    except OSError as e:
+                        logger.warning(f"  > Copy to destination failed: {e}")
+                    finally:
+                        if os.path.exists(tmp_dest):
+                            os.remove(tmp_dest)
+
+                    if os.path.exists(trailer_filename) and os.path.getsize(trailer_filename) > 0:
+                        logger.info(f"  > Trailer successfully saved: {os.path.basename(trailer_filename)}")
+                        download_success = True
+                        break
+                    else:
+                        logger.warning(f"  > Copy failed or file is empty on remote: {trailer_filename}")
+                else:
+                    logger.warning(f"  > No suitable trailer found for source ({source}).")
+
+        if download_success:
+            state['downloaded'] = state.get('downloaded', 0) + 1
+        else:
+            state['not_found'] = state.get('not_found', 0) + 1
+
+    # 6. OPTIONAL: migrate into a dedicated per-movie folder. Jellyfin's local-extras
+    # resolver silently ignores a correctly-named "<title>-trailer" file sitting in a
+    # folder shared by multiple movies - it only recognizes one when the movie has its
+    # own folder (https://github.com/jellyfin/jellyfin/issues/10077). "all" migrates
+    # every movie; "trailers" only migrates movies that actually have a trailer
+    # (pre-existing or just downloaded), leaving the rest of a flat library untouched.
+    migrate_mode = getattr(args, "migrate_to_folders", None)
+    should_migrate = migrate_mode == "all" or (migrate_mode == "trailers" and (already_had_trailer or download_success))
+    if should_migrate:
+        _, moved = migrate_movie_to_own_folder(local_path, dry_run=args.dry_run, extra_stems=(safe_title,))
+        if moved:
+            state['migrated'] = state.get('migrated', 0) + 1
 
 
 def main(argv=None):
@@ -726,6 +828,13 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without modifying anything.")
     parser.add_argument("--sync", action="store_true", help="Trigger a single Jellyfin library scan after all downloads complete.")
     parser.add_argument("--rename-original", action="store_true", help="Rename the original movie file to match the metadata title.")
+    parser.add_argument(
+        "--migrate-to-folders", choices=["all", "trailers"], default=None,
+        help="Move movies into a dedicated '<title>/<title>.ext' subfolder, required for "
+             "Jellyfin to recognize a local trailer (see jellyfin/jellyfin#10077). "
+             "'all' migrates every movie; 'trailers' only migrates movies that already "
+             "have, or just got, a trailer."
+    )
     args = parser.parse_args(argv)
 
     config = load_config()

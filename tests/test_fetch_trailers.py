@@ -23,6 +23,7 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     get_jellyfin_movies,
     trigger_jellyfin_library_scan,
     process_movie,
+    migrate_movie_to_own_folder,
 )
 
 
@@ -474,7 +475,7 @@ class TestMovieProcessing(unittest.TestCase):
             "RemoteTrailers": []
         }
         
-        args = MagicMock(dry_run=True, sync=False, rename_original=False)
+        args = MagicMock(dry_run=True, sync=False, rename_original=False, migrate_to_folders=None)
         state = {'last_dir': None}
 
         process_movie(movie, args, state, self.config)
@@ -495,7 +496,7 @@ class TestMovieProcessing(unittest.TestCase):
             "RemoteTrailers": []
         }
 
-        args = MagicMock(dry_run=False, sync=False, rename_original=True)
+        args = MagicMock(dry_run=False, sync=False, rename_original=True, migrate_to_folders=None)
         state = {'last_dir': None}
 
         with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources", return_value=[]):
@@ -507,6 +508,126 @@ class TestMovieProcessing(unittest.TestCase):
         # Ensure Japanese characters were NOT used for filename
         japanese_path = os.path.join(self.test_dir, "ギヴン うらがわの存在 (2021).mp4")
         self.assertFalse(os.path.exists(japanese_path))
+
+
+class TestMigrateToOwnFolder(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.mappings = {"/media/Movies/": f"{self.test_dir}/"}
+        self.config = ("http://mock-jellyfin:8096", "mock-key", self.mappings, "firefox")
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def _touch(self, name, size=1024 * 1024 + 10):
+        p = os.path.join(self.test_dir, name)
+        with open(p, "wb") as f:
+            f.write(b"x" * size)
+        return p
+
+    def test_migrate_moves_movie_and_sidecars_out_of_shared_folder(self):
+        # Simulate a flat folder holding two unrelated movies plus sidecar files.
+        self._touch("Inception (2010).mkv")
+        self._touch("Inception (2010).eng.srt", size=100)
+        self._touch("Inception (2010)-trailer.mp4", size=100)
+        self._touch("Interstellar (2014).mkv")  # unrelated sibling movie
+
+        local_path = os.path.join(self.test_dir, "Inception (2010).mkv")
+        new_path, moved = migrate_movie_to_own_folder(local_path)
+
+        self.assertTrue(moved)
+        expected_dir = os.path.join(self.test_dir, "Inception (2010)")
+        self.assertEqual(new_path, os.path.join(expected_dir, "Inception (2010).mkv"))
+        self.assertTrue(os.path.exists(os.path.join(expected_dir, "Inception (2010).mkv")))
+        self.assertTrue(os.path.exists(os.path.join(expected_dir, "Inception (2010).eng.srt")))
+        self.assertTrue(os.path.exists(os.path.join(expected_dir, "Inception (2010)-trailer.mp4")))
+        # The unrelated sibling movie must be left untouched in the shared folder.
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Interstellar (2014).mkv")))
+
+    def test_migrate_uses_extra_stem_to_catch_differently_named_trailer(self):
+        # The movie file keeps its original messy name (no --rename-original), but the
+        # trailer was saved under the cleaned "safe_title" - migration must still catch it.
+        self._touch("Inception.2010.WEB-DL.mkv")
+        self._touch("Inception (2010)-trailer.mp4", size=100)
+
+        local_path = os.path.join(self.test_dir, "Inception.2010.WEB-DL.mkv")
+        new_path, moved = migrate_movie_to_own_folder(local_path, extra_stems=("Inception (2010)",))
+
+        self.assertTrue(moved)
+        expected_dir = os.path.join(self.test_dir, "Inception.2010.WEB-DL")
+        self.assertTrue(os.path.exists(os.path.join(expected_dir, "Inception.2010.WEB-DL.mkv")))
+        self.assertTrue(os.path.exists(os.path.join(expected_dir, "Inception (2010)-trailer.mp4")))
+
+    def test_migrate_is_idempotent_when_already_in_own_folder(self):
+        own_dir = os.path.join(self.test_dir, "Inception (2010)")
+        os.makedirs(own_dir)
+        movie_path = os.path.join(own_dir, "Inception (2010).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
+
+        new_path, moved = migrate_movie_to_own_folder(movie_path)
+        self.assertFalse(moved)
+        self.assertEqual(new_path, movie_path)
+
+    def test_migrate_dry_run_does_not_touch_disk(self):
+        self._touch("Inception (2010).mkv")
+        local_path = os.path.join(self.test_dir, "Inception (2010).mkv")
+
+        new_path, would_move = migrate_movie_to_own_folder(local_path, dry_run=True)
+
+        self.assertTrue(would_move)
+        self.assertEqual(new_path, local_path)
+        self.assertTrue(os.path.exists(local_path))
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "Inception (2010)")))
+
+    def test_process_movie_migrate_mode_trailers_only_touches_movies_with_trailer(self):
+        # "trailers" mode must migrate a movie that already has a local trailer, but
+        # leave an unrelated movie with no trailer flat/untouched.
+        self._touch("Inception (2010).mkv")
+        self._touch("Inception (2010)-trailer.mp4", size=100)
+        self._touch("Interstellar (2014).mkv")
+
+        movie_with_trailer = {
+            "Id": "m1", "Name": "Inception", "ProductionYear": 2010,
+            "Path": "/media/Movies/Inception (2010).mkv",
+            "LocalTrailerCount": 1, "RemoteTrailers": []
+        }
+        movie_without_trailer = {
+            "Id": "m2", "Name": "Interstellar", "ProductionYear": 2014,
+            "Path": "/media/Movies/Interstellar (2014).mkv",
+            "LocalTrailerCount": 0, "RemoteTrailers": []
+        }
+
+        args = MagicMock(dry_run=False, sync=False, rename_original=False, migrate_to_folders="trailers")
+        state = {'last_dir': None}
+
+        with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources", return_value=[]):
+            process_movie(movie_with_trailer, args, state, self.config)
+            process_movie(movie_without_trailer, args, state, self.config)
+
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Inception (2010)", "Inception (2010).mkv")))
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Inception (2010)", "Inception (2010)-trailer.mp4")))
+        # No trailer -> stays exactly where it was, untouched.
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Interstellar (2014).mkv")))
+        self.assertEqual(state.get('migrated', 0), 1)
+
+    def test_process_movie_migrate_mode_all_touches_every_movie(self):
+        self._touch("Interstellar (2014).mkv")
+
+        movie = {
+            "Id": "m2", "Name": "Interstellar", "ProductionYear": 2014,
+            "Path": "/media/Movies/Interstellar (2014).mkv",
+            "LocalTrailerCount": 0, "RemoteTrailers": []
+        }
+
+        args = MagicMock(dry_run=False, sync=False, rename_original=False, migrate_to_folders="all")
+        state = {'last_dir': None}
+
+        with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources", return_value=[]):
+            process_movie(movie, args, state, self.config)
+
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Interstellar (2014)", "Interstellar (2014).mkv")))
+        self.assertEqual(state.get('migrated', 0), 1)
 
 
 if __name__ == "__main__":

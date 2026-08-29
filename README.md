@@ -11,6 +11,7 @@ A lightweight local Python tool that fetches movie metadata from a Jellyfin inst
 * **NFS/NAS Path Mapping:** Translates Jellyfin server paths to local mount points.
 * **Dry-Run Mode:** Safely preview actions without downloading files or making changes.
 * **Jellyfin Sync:** Optionally triggers a single full Jellyfin library scan after all trailers have been downloaded, so newly added local trailer files are picked up.
+* **Folder Migration:** Optionally moves a movie (and its sidecar files) into a dedicated `<title>/<title>.ext` subfolder, which Jellyfin requires to recognize a local trailer at all when movies otherwise share a flat folder ([jellyfin/jellyfin#10077](https://github.com/jellyfin/jellyfin/issues/10077)).
 
 ## Prerequisites
 
@@ -71,6 +72,16 @@ Run via `uv`:
   ```bash
   uv run jellyfin-trailer-fetcher --rename-original
   ```
+
+- **Migrate movies into their own folder (required for local trailers to show up in a flat/shared-folder library):**
+  ```bash
+  # Only movies that already have (or just got) a trailer:
+  uv run jellyfin-trailer-fetcher --migrate-to-folders trailers
+
+  # Every movie, regardless of trailer status:
+  uv run jellyfin-trailer-fetcher --migrate-to-folders all
+  ```
+  Run with `--dry-run` first to preview exactly what would move. Combine with `--rename-original` for a clean `<title> (Year)/<title> (Year).ext` result; without it, the movie keeps its current filename but still gets its own folder (Jellyfin only requires the folder, not a clean name).
 
 ## Running Tests
 
