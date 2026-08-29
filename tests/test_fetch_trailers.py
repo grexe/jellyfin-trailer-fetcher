@@ -397,6 +397,23 @@ class TestTrailerFilter(unittest.TestCase):
         reason = filter_fn({"duration": 150, "title": "Interstellar Official Trailer"}, incomplete=False)
         self.assertIn("Rejected.", reason)
 
+    def test_search_filter_rejects_title_buried_in_unrelated_result(self):
+        # Real-world case: two different real movies share almost the same
+        # transliterated title and released the same year - "Chang An" (2023) vs
+        # "30,000 Miles From Chang'an" (2023, 长安三万里). The candidate phrase must
+        # not match just because it appears mid-title in someone else's promo text.
+        filter_fn = create_trailer_filter(["Chang An"], movie_duration_sec=6300, is_search=True)
+        reason = filter_fn({
+            "duration": 120,
+            "title": "30,000 Miles From Chang'an (2023) 长安三万里 - Movie Trailer - Far East Films",
+        }, incomplete=False)
+        self.assertIn("Rejected.", reason)
+
+    def test_search_filter_accepts_correct_trailer_with_short_prefix(self):
+        filter_fn = create_trailer_filter(["Chang An"], movie_duration_sec=6300, is_search=True)
+        reason = filter_fn({"duration": 90, "title": "Chang 'An｜Official Trailer - in theaters on July 8th"}, incomplete=False)
+        self.assertIsNone(reason)
+
     def test_search_filter_allows_year_right_after_title(self):
         # A release year immediately after the title is a normal trailer title pattern
         # and must not be confused with a franchise/sequel number.

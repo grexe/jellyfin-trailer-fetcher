@@ -457,6 +457,18 @@ def _title_suffix_allowed(remainder):
     return not _SEQUEL_SUFFIX_RE.match(remainder)
 
 
+def _title_prefix_allowed(prefix, match_word_count):
+    """Whether the text right before a matched title candidate still counts as a
+    match: the title's own words must be the dominant part of the string, not buried
+    after substantial unrelated text. E.g. a candidate "Chang An" must not match
+    inside "30,000 Miles From Chang'an (2023) Movie Trailer" just because that other,
+    real, same-year movie's promo text happens to contain the phrase "Chang An" -
+    a short prefix like "[ENG SUB] " is fine, four unrelated words in front aren't."""
+    if not prefix:
+        return True
+    return len(prefix.split()) <= match_word_count
+
+
 def create_trailer_filter(title_variants, movie_duration_sec, is_search):
     """Create a yt-dlp match_filter function for trailers."""
     if isinstance(title_variants, str):
@@ -516,13 +528,16 @@ def create_trailer_filter(title_variants, movie_duration_sec, is_search):
                             continue
                         phrase_match = re.search(r'\b' + re.escape(norm_cand) + r'\b', norm_yt)
                         if phrase_match:
-                            if _title_suffix_allowed(norm_yt[phrase_match.end():].strip()):
+                            prefix_ok = _title_prefix_allowed(norm_yt[:phrase_match.start()].strip(), len(norm_cand.split()))
+                            suffix_ok = _title_suffix_allowed(norm_yt[phrase_match.end():].strip())
+                            if prefix_ok and suffix_ok:
                                 title_match = True
                                 break
-                            # The full phrase matched, but is immediately followed by what
-                            # looks like a different installment's number - reject this
-                            # candidate rather than falling through to the looser word-list
-                            # check below, which would match just as wrongly.
+                            # The full phrase matched, but is buried after substantial
+                            # unrelated text or immediately followed by what looks like a
+                            # different installment's number - reject this candidate rather
+                            # than falling through to the looser word-list check below,
+                            # which would match just as wrongly.
                             continue
                         # Phrase not contiguous - fall back to requiring every significant
                         # word to appear as a whole word (not a substring) somewhere in the
