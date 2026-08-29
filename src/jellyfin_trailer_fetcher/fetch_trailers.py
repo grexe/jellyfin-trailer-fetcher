@@ -217,6 +217,67 @@ def _significant_words(text):
     return {w for w in norm.split() if len(w) > 1 and w not in _STOPWORDS}
 
 
+def _prefer_filename_over_metadata(name_cand, stem_cand):
+    """
+    Whether a movie's filename-derived title/year should be trusted over Jellyfin's
+    "Name"-derived metadata: both are Latin-script, differ, the filename is substantial
+    (not just "movie"), and less than half of the metadata's own significant words are
+    shared with it. A bad provider match (wrong Name) usually gets the year wrong too,
+    so this same signal drives both resolve_movie_titles and resolve_movie_year.
+    """
+    if not (
+        stem_cand and not is_non_latin(stem_cand)
+        and name_cand and not is_non_latin(name_cand)
+        and stem_cand != name_cand
+    ):
+        return False
+
+    # "Substantial" is judged on the raw word count, not the stopword-filtered one:
+    # a genuine two-word title like "Chang An" must still count as substantial even
+    # though "An" alone is a filler word and gets excluded from significant_words.
+    if len(stem_cand.split()) < 2:
+        return False
+
+    name_words = _significant_words(name_cand)
+    if not name_words:
+        return False
+
+    stem_words = _significant_words(stem_cand)
+    overlap = stem_words & name_words
+    return len(overlap) / len(name_words) < 0.5
+
+
+def resolve_movie_year(movie, local_path=""):
+    """
+    Determine the movie's release year. Prefers the year embedded in the file's own
+    name over Jellyfin's ProductionYear/PremiereDate when the two disagree - a movie
+    correctly named "Chang An (2023).mkv" on disk should not get renamed to "(2012)"
+    just because Jellyfin matched it to a same-named 2012 film's metadata. The title
+    can look perfectly fine in that case (both agree on "Chang An"), so this can't
+    reuse the word-overlap "does the title look wrong" signal from
+    _prefer_filename_over_metadata - it compares the year directly instead.
+    """
+    file_stem = os.path.splitext(os.path.basename(local_path))[0] if local_path else ""
+    _, file_year = clean_media_title(file_stem)
+
+    metadata_year = movie.get("ProductionYear")
+    if not metadata_year and movie.get("PremiereDate"):
+        metadata_year = movie.get("PremiereDate")[:4]
+    metadata_year = str(metadata_year) if metadata_year else None
+
+    if file_year and metadata_year and file_year != metadata_year:
+        return file_year
+
+    if metadata_year:
+        return metadata_year
+
+    if file_year:
+        return file_year
+
+    _, name_year = clean_media_title(movie.get("Name", ""))
+    return name_year
+
+
 def resolve_movie_titles(movie, local_path=""):
     """
     Determine preferred title for naming/renaming (honoring Latin locale over CJK/non-Latin)
@@ -243,25 +304,10 @@ def resolve_movie_titles(movie, local_path=""):
     # Jellyfin's "Name" metadata can be wrong in a way that no amount of noise-stripping
     # fixes: a bad provider match, or an embedded container title tag that's actually
     # leftover technical junk (e.g. "Chang An ( EAC3 ) CHINESE" for a movie whose file is
-    # correctly named "Chang'e and the Jade Rabbit's Mid-Autumn Adventure"). If less than
-    # half of Name's own significant words are shared with a substantial filename (not
-    # just "movie.mkv"), trust the filename instead. A plain word-disjoint check is too
-    # strict here - "Chang An" and "Chang'e" happen to share the fragment "chang" even
-    # though they're different titles, so this compares overlap as a ratio instead.
-    if (
-        stem_cand and not is_non_latin(stem_cand)
-        and name_cand and not is_non_latin(name_cand)
-        and stem_cand != name_cand
-    ):
-        # "Substantial" is judged on the raw word count, not the stopword-filtered one:
-        # a genuine two-word title like "Chang An" must still count as substantial even
-        # though "An" alone is a filler word and gets excluded from significant_words.
-        stem_words = _significant_words(stem_cand)
-        name_words = _significant_words(name_cand)
-        if len(stem_cand.split()) >= 2 and name_words:
-            overlap = stem_words & name_words
-            if len(overlap) / len(name_words) < 0.5:
-                name_cand = stem_cand
+    # correctly named "Chang'e and the Jade Rabbit's Mid-Autumn Adventure"). Trust the
+    # filename instead when it looks untrustworthy - see _prefer_filename_over_metadata.
+    if _prefer_filename_over_metadata(name_cand, stem_cand):
+        name_cand = stem_cand
 
     # Preferred title for display and file naming:
     if not is_non_latin(name_cand):
@@ -333,14 +379,7 @@ def get_trailer_sources(movie, local_path=""):
     1. Official RemoteTrailers from Jellyfin metadata
     2. Multi-stage YouTube search (Full title + year, Main title + year, Broad query, Native search)
     """
-    year = movie.get("ProductionYear")
-    if not year and movie.get("PremiereDate"):
-        year = movie.get("PremiereDate")[:4]
-
-    if not year and local_path:
-        _, ext_yr_name = clean_media_title(movie.get("Name", ""))
-        _, ext_yr_file = clean_media_title(os.path.basename(local_path))
-        year = ext_yr_name or ext_yr_file
+    year = resolve_movie_year(movie, local_path)
 
     remote_trailers = movie.get("RemoteTrailers", [])
     sources_to_try = []
@@ -582,6 +621,68 @@ def print_summary(state, total_movies, dry_run=False, rename_original=False):
     logger.info("==========================================")
 
 
+def rename_movie_file(local_path, safe_title, dry_run=False):
+    """
+    Rename the movie file to "<safe_title><ext>". If the movie already lives in its
+    own dedicated folder (the folder's name matches the file's current stem - the
+    same convention migrate_movie_to_own_folder creates and checks for), the folder
+    is renamed to match too. Without this, renaming just the file would leave the
+    folder's name stale, and a later migrate_movie_to_own_folder() call would then see
+    a mismatch and nest a new, wrongly-named folder for it inside the existing one.
+
+    Returns (new_local_path, renamed) where `renamed` is True if something was (or, in
+    dry-run mode, would be) renamed.
+    """
+    folder_path = os.path.dirname(local_path)
+    current_stem, ext = os.path.splitext(os.path.basename(local_path))
+
+    folder_is_dedicated = os.path.basename(folder_path) == current_stem
+    target_folder = folder_path
+    if folder_is_dedicated and os.path.basename(folder_path) != safe_title:
+        target_folder = os.path.join(os.path.dirname(folder_path), safe_title)
+
+    target_movie_path = os.path.join(target_folder, f"{safe_title}{ext}")
+    if target_movie_path == local_path:
+        return local_path, False
+
+    if dry_run:
+        if target_folder != folder_path:
+            logger.info(f"  > [DRY-RUN] Would rename folder + file to: '{safe_title}/{safe_title}{ext}'")
+        else:
+            logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(target_movie_path)}'")
+        return local_path, True
+
+    if target_folder != folder_path:
+        if os.path.exists(target_folder):
+            logger.warning(f"  > Target folder '{os.path.basename(target_folder)}' already exists. Skipping folder rename.")
+            target_folder = folder_path
+            target_movie_path = os.path.join(target_folder, f"{safe_title}{ext}")
+        else:
+            try:
+                os.rename(folder_path, target_folder)
+                logger.info(f"  > Folder renamed to: '{os.path.basename(target_folder)}'")
+                local_path = os.path.join(target_folder, os.path.basename(local_path))
+                folder_path = target_folder
+            except OSError as e:
+                logger.error(f"  > Failed to rename folder '{folder_path}': {e}")
+                target_movie_path = os.path.join(folder_path, f"{safe_title}{ext}")
+
+    if local_path == target_movie_path:
+        return local_path, True
+
+    if os.path.exists(target_movie_path):
+        logger.warning(f"  > Target file '{os.path.basename(target_movie_path)}' already exists. Skipping rename.")
+        return local_path, False
+
+    try:
+        os.rename(local_path, target_movie_path)
+        logger.info(f"  > Original file renamed to: '{os.path.basename(target_movie_path)}'")
+        return target_movie_path, True
+    except OSError as e:
+        logger.error(f"  > Failed to rename file for '{safe_title}': {e}")
+        return local_path, False
+
+
 def _is_sidecar_of(entry_stem, movie_stem):
     """Whether a filename (without extension) belongs to the given movie: an exact
     match, or a suffix attached with '.', '-' or '_' (subtitles like "Movie.eng.srt",
@@ -700,21 +801,12 @@ def process_movie(movie, args, state, config):
 
     logger.info(f"Processing movie file: {os.path.basename(local_path)} ...")
     
-    year = movie.get("ProductionYear")
-    if not year and movie.get("PremiereDate"):
-        year = movie.get("PremiereDate")[:4]
+    year = resolve_movie_year(movie, local_path)
 
-    if not year and local_path:
-        _, ext_yr_name = clean_media_title(movie.get("Name", ""))
-        _, ext_yr_file = clean_media_title(os.path.basename(local_path))
-        year = ext_yr_name or ext_yr_file
-    
     year_str = f" ({year})" if year else ""
     safe_title = sanitize_filename(f"{preferred_title}{year_str}")
 
     logger.info(f"  > using title '{preferred_title}'")
-    original_ext = os.path.splitext(local_path)[1]
-    new_movie_path = os.path.join(folder_path, f"{safe_title}{original_ext}")
     trailer_filename = os.path.join(folder_path, f"{safe_title}-trailer.mp4")
 
     # Calculate actual movie duration in seconds (10,000,000 ticks = 1 second)
@@ -735,22 +827,16 @@ def process_movie(movie, args, state, config):
         logger.info("  > Trailer already exists, skipping.")
         state['already_had_trailer'] = state.get('already_had_trailer', 0) + 1
     else:
-        # 3. OPTIONAL: Rename original file
-        if getattr(args, "rename_original", False) and local_path != new_movie_path:
-            if args.dry_run:
-                logger.info(f"  > [DRY-RUN] Would rename original file to: '{os.path.basename(new_movie_path)}'")
+        # 3. OPTIONAL: Rename original file (and its folder, if it's already dedicated
+        # to this movie - see rename_movie_file for why that matters)
+        if getattr(args, "rename_original", False):
+            local_path, renamed = rename_movie_file(local_path, safe_title, dry_run=args.dry_run)
+            if renamed:
                 state['renamed'] = state.get('renamed', 0) + 1
-            else:
-                if not os.path.exists(new_movie_path):
-                    try:
-                        os.rename(local_path, new_movie_path)
-                        logger.info(f"  > Original file renamed to: '{os.path.basename(new_movie_path)}'")
-                        local_path = new_movie_path
-                        state['renamed'] = state.get('renamed', 0) + 1
-                    except Exception as e:
-                        logger.error(f"  > Failed to rename file for '{preferred_title}': {e}")
-                else:
-                    logger.warning(f"  > Target file '{os.path.basename(new_movie_path)}' already exists. Skipping rename.")
+                # The rename may have moved the movie into a renamed folder; recompute
+                # paths derived from the folder so the download below lands correctly.
+                folder_path = os.path.dirname(local_path)
+                trailer_filename = os.path.join(folder_path, f"{safe_title}-trailer.mp4")
 
         # 4. Determine sources for trailer download
         sources_to_try = get_trailer_sources(movie, local_path)

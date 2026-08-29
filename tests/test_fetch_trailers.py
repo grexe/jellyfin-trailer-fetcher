@@ -24,6 +24,8 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     trigger_jellyfin_library_scan,
     process_movie,
     migrate_movie_to_own_folder,
+    rename_movie_file,
+    resolve_movie_year,
     main,
 )
 import jellyfin_trailer_fetcher.fetch_trailers as fetch_trailers_module
@@ -184,6 +186,31 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         movie = {"Name": "Interstellar", "OriginalTitle": ""}
         preferred, variants = resolve_movie_titles(movie, "/path/movie.mkv")
         self.assertEqual(preferred, "Interstellar")
+
+
+class TestResolveMovieYear(unittest.TestCase):
+    def test_prefers_filename_year_when_metadata_disagrees(self):
+        # Jellyfin matched the wrong release of an otherwise-correctly-titled movie
+        # (title agrees on "Chang An" so the title-trust heuristic can't catch this -
+        # the year itself must be compared directly).
+        movie = {"Name": "Chang An ( EAC3 ) CHINESE", "OriginalTitle": "", "ProductionYear": 2012}
+        year = resolve_movie_year(movie, "/local/Chang An (2023)/Chang An (2023).mkv")
+        self.assertEqual(year, "2023")
+
+    def test_uses_metadata_year_when_filename_has_no_year(self):
+        movie = {"Name": "Inception", "ProductionYear": 2010}
+        year = resolve_movie_year(movie, "/local/Inception/Inception.mkv")
+        self.assertEqual(year, "2010")
+
+    def test_uses_metadata_year_when_filename_year_agrees(self):
+        movie = {"Name": "Inception", "ProductionYear": 2010}
+        year = resolve_movie_year(movie, "/local/Inception (2010)/Inception (2010).mkv")
+        self.assertEqual(year, "2010")
+
+    def test_falls_back_to_premiere_date(self):
+        movie = {"Name": "Inception", "PremiereDate": "2010-07-16T00:00:00.000Z"}
+        year = resolve_movie_year(movie, "/local/Inception/Inception.mkv")
+        self.assertEqual(year, "2010")
 
 
 class TestMediaValidation(unittest.TestCase):
@@ -537,6 +564,75 @@ class TestMovieProcessing(unittest.TestCase):
         self.assertFalse(os.path.exists(japanese_path))
 
 
+class TestRenameMovieFile(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_renames_file_only_in_a_shared_flat_folder(self):
+        movie_path = os.path.join(self.test_dir, "some.messy.release.name.mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x")
+        # Another movie sharing the same flat folder - the folder must not be touched.
+        with open(os.path.join(self.test_dir, "Other Movie (2019).mkv"), "wb") as f:
+            f.write(b"x")
+
+        new_path, renamed = rename_movie_file(movie_path, "Correct Title (2020)")
+
+        self.assertTrue(renamed)
+        self.assertEqual(new_path, os.path.join(self.test_dir, "Correct Title (2020).mkv"))
+        self.assertTrue(os.path.exists(new_path))
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Other Movie (2019).mkv")))
+
+    def test_renames_folder_too_when_already_dedicated(self):
+        # Reproduces the reported bug: a movie already living in its own folder
+        # ("Chang An (2023)/Chang An (2023).mkv") gets renamed to a different year
+        # from bad metadata - the folder must be renamed along with the file, so a
+        # later migrate_movie_to_own_folder() doesn't see a mismatch and nest a new
+        # folder inside the existing one.
+        own_dir = os.path.join(self.test_dir, "Chang An (2023)")
+        os.makedirs(own_dir)
+        movie_path = os.path.join(own_dir, "Chang An (2023).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x")
+
+        new_path, renamed = rename_movie_file(movie_path, "Chang An (2012)")
+
+        self.assertTrue(renamed)
+        expected_dir = os.path.join(self.test_dir, "Chang An (2012)")
+        self.assertEqual(new_path, os.path.join(expected_dir, "Chang An (2012).mkv"))
+        self.assertTrue(os.path.exists(new_path))
+        self.assertFalse(os.path.exists(own_dir))
+        # No leftover/nested folder from a mismatched rename.
+        self.assertFalse(os.path.exists(os.path.join(own_dir, "Chang An (2012)")))
+
+    def test_dry_run_does_not_touch_disk(self):
+        own_dir = os.path.join(self.test_dir, "Chang An (2023)")
+        os.makedirs(own_dir)
+        movie_path = os.path.join(own_dir, "Chang An (2023).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x")
+
+        new_path, would_rename = rename_movie_file(movie_path, "Chang An (2012)", dry_run=True)
+
+        self.assertTrue(would_rename)
+        self.assertEqual(new_path, movie_path)
+        self.assertTrue(os.path.exists(movie_path))
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "Chang An (2012)")))
+
+    def test_no_op_when_already_correctly_named(self):
+        movie_path = os.path.join(self.test_dir, "Correct Title (2020).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x")
+
+        new_path, renamed = rename_movie_file(movie_path, "Correct Title (2020)")
+
+        self.assertFalse(renamed)
+        self.assertEqual(new_path, movie_path)
+
+
 class TestMigrateToOwnFolder(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -655,6 +751,37 @@ class TestMigrateToOwnFolder(unittest.TestCase):
 
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Interstellar (2014)", "Interstellar (2014).mkv")))
         self.assertEqual(state.get('migrated', 0), 1)
+
+    def test_rename_and_migrate_do_not_nest_folder_on_wrong_metadata_year(self):
+        # Full reproduction of the reported bug: a movie already living in its own
+        # dedicated folder, whose Jellyfin metadata year is wrong (bad provider
+        # match - title agrees, year doesn't). --rename-original + --migrate-to-folders
+        # together must end up with exactly one correctly-named folder, not a
+        # "Chang An (2012)" folder nested inside the original "Chang An (2023)" one.
+        own_dir = os.path.join(self.test_dir, "Chang An (2023)")
+        os.makedirs(own_dir)
+        movie_path = os.path.join(own_dir, "Chang An (2023).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
+
+        movie = {
+            "Id": "m1", "Name": "Chang An ( EAC3 ) CHINESE", "ProductionYear": 2012,
+            "Path": "/media/Movies/Chang An (2023)/Chang An (2023).mkv",
+            "LocalTrailerCount": 0, "RemoteTrailers": []
+        }
+
+        args = MagicMock(dry_run=False, sync=False, rename_original=True, migrate_to_folders="all")
+        state = {'last_dir': None}
+
+        with patch("jellyfin_trailer_fetcher.fetch_trailers.get_trailer_sources", return_value=[]):
+            process_movie(movie, args, state, self.config)
+
+        expected_dir = os.path.join(self.test_dir, "Chang An (2023)")
+        expected_file = os.path.join(expected_dir, "Chang An (2023).mkv")
+        self.assertTrue(os.path.exists(expected_file), "movie should end up correctly named using the filename's year")
+        # No nested "Chang An (2012)" folder anywhere.
+        self.assertFalse(os.path.exists(os.path.join(expected_dir, "Chang An (2012)")))
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "Chang An (2012)")))
 
 
 class TestMainTriggersSyncOnMigrationAlone(unittest.TestCase):
