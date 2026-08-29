@@ -868,13 +868,20 @@ def main(argv=None):
     print_summary(state, len(movies), dry_run=args.dry_run, rename_original=args.rename_original)
 
     # Trigger a single library scan (not one per movie) so Jellyfin picks up every
-    # newly downloaded trailer file in one pass.
+    # newly downloaded trailer file, and any moved/migrated paths, in one pass.
     if args.sync and not args.dry_run:
-        if state.get('downloaded', 0) > 0:
-            logger.info(f"Triggering a Jellyfin library scan to pick up {state['downloaded']} new trailer(s)...")
+        downloaded = state.get('downloaded', 0)
+        migrated = state.get('migrated', 0)
+        if downloaded > 0 or migrated > 0:
+            reasons = []
+            if downloaded > 0:
+                reasons.append(f"{downloaded} new trailer(s)")
+            if migrated > 0:
+                reasons.append(f"{migrated} migrated movie(s)")
+            logger.info(f"Triggering a Jellyfin library scan to pick up {' and '.join(reasons)}...")
             trigger_jellyfin_library_scan(jellyfin_url, api_key)
         else:
-            logger.info("No new trailers downloaded; skipping Jellyfin library scan.")
+            logger.info("No new trailers or migrations; skipping Jellyfin library scan.")
 
 
 if __name__ == "__main__":

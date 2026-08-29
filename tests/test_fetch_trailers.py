@@ -24,7 +24,9 @@ from jellyfin_trailer_fetcher.fetch_trailers import (
     trigger_jellyfin_library_scan,
     process_movie,
     migrate_movie_to_own_folder,
+    main,
 )
+import jellyfin_trailer_fetcher.fetch_trailers as fetch_trailers_module
 
 
 class TestPathTranslation(unittest.TestCase):
@@ -628,6 +630,40 @@ class TestMigrateToOwnFolder(unittest.TestCase):
 
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Interstellar (2014)", "Interstellar (2014).mkv")))
         self.assertEqual(state.get('migrated', 0), 1)
+
+
+class TestMainTriggersSyncOnMigrationAlone(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_sync_fires_when_only_migration_happened_no_downloads(self):
+        # A run that only moves already-trailered movies into their own folder (no new
+        # trailer downloaded this run) must still trigger a library scan under --sync -
+        # Jellyfin needs to see the moved paths too, not just new trailer files.
+        movie_path = os.path.join(self.test_dir, "Inception (2010).mkv")
+        with open(movie_path, "wb") as f:
+            f.write(b"x" * (1024 * 1024 + 10))
+        trailer_path = os.path.join(self.test_dir, "Inception (2010)-trailer.mp4")
+        with open(trailer_path, "wb") as f:
+            f.write(b"x" * 100)
+
+        movies = [{
+            "Id": "m1", "Name": "Inception", "ProductionYear": 2010,
+            "Path": "/media/Movies/Inception (2010).mkv",
+            "LocalTrailerCount": 1, "RemoteTrailers": []
+        }]
+        config = ("http://mock-jellyfin:8096", "mock-key", {"/media/Movies/": f"{self.test_dir}/"}, None)
+
+        with patch.object(fetch_trailers_module, "get_jellyfin_movies", return_value=movies), \
+             patch.object(fetch_trailers_module, "load_config", return_value=config), \
+             patch.object(fetch_trailers_module, "trigger_jellyfin_library_scan") as mock_scan:
+            main(["--sync", "--migrate-to-folders", "trailers"])
+
+        mock_scan.assert_called_once_with("http://mock-jellyfin:8096", "mock-key")
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "Inception (2010)", "Inception (2010).mkv")))
 
 
 if __name__ == "__main__":
