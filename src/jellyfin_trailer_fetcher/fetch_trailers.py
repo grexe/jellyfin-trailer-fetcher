@@ -164,21 +164,28 @@ def clean_media_title(title):
     s = re.sub(r'^\s*0*\d{1,3}\s*[\.\-_]\s*', '', s)
     s = re.sub(r'^\s*0*\d{1,3}\s+', '', s)
 
-    # 4. Remove common scene / release / quality / audio noise keywords
+    # 4. Remove common scene / release / quality / audio / language noise keywords
     noise_patterns = [
         r'\b(720p|1080p|1080i|2160p|4k|uhd|hd|sd|480p|360p)\b',
         r'\b(h264|h265|x264|x265|hevc|av1|xvid|divx|10bit|8bit)\b',
-        r'\b(aac|ac3|dts|dts-hd|truehd|atmos|flac|mp3|ddp|dd5\.1|5\.1)\b',
+        r'\b(aac|e?ac3|e-ac-3|dts|dts-hd|dts-x|dtsx|truehd|atmos|flac|mp3|pcm|opus|ddp|dd5\.1|5\.1)\b',
         r'\b(bluray|blu-ray|bdrip|brrip|web-dl|webrip|web|dvdrip|dvd|hdtv|remux)\b',
+        # ISO-ish abbreviations for common track languages
         r'\b(eng|jpn|ger|fra|spa|ita|multi|subs?|dub|dual audio|subbed|dubbed)\b',
+        # Spelled-out language names, as seen in container title tags / scene releases
+        r'\b(chinese|mandarin|cantonese|korean|japanese|english|german|french|spanish|'
+        r'italian|russian|thai|vietnamese|hindi|arabic|portuguese|dutch|polish|turkish|'
+        r'swedish|norwegian|danish|finnish|greek|hebrew|indonesian)\b',
         r'\b(animation|anime)\b',
         r'\b(mp4|mkv|avi|vob|iso)\b',
     ]
     for np in noise_patterns:
         s = re.sub(np, ' ', s, flags=re.IGNORECASE)
 
-    # 5. Clean up stray punctuation and collapse whitespace
+    # 5. Clean up stray punctuation, now-empty parenthetical remnants (e.g. a
+    # "( EAC3 )" tag that noise-stripping hollowed out), and collapse whitespace
     s = re.sub(r'[_\.]', ' ', s)
+    s = re.sub(r'\(\s*\)|\[\s*\]', ' ', s)
     s = re.sub(r'\s*-\s*$', '', s)
     s = re.sub(r'^\s*-\s*', '', s)
     s = re.sub(r'\s+', ' ', s).strip()
@@ -246,9 +253,12 @@ def resolve_movie_titles(movie, local_path=""):
         and name_cand and not is_non_latin(name_cand)
         and stem_cand != name_cand
     ):
+        # "Substantial" is judged on the raw word count, not the stopword-filtered one:
+        # a genuine two-word title like "Chang An" must still count as substantial even
+        # though "An" alone is a filler word and gets excluded from significant_words.
         stem_words = _significant_words(stem_cand)
         name_words = _significant_words(name_cand)
-        if len(stem_words) >= 2 and name_words:
+        if len(stem_cand.split()) >= 2 and name_words:
             overlap = stem_words & name_words
             if len(overlap) / len(name_words) < 0.5:
                 name_cand = stem_cand

@@ -93,6 +93,14 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         self.assertEqual(t3, "DAKAICHI - Im being harassed by the sexiest man of the year")
         self.assertEqual(y3, "2024")
 
+    def test_clean_media_title_strips_eac3_and_spelled_out_language(self):
+        # "ac3" alone doesn't match inside "eac3" due to the word boundary, and spelled-
+        # out language names (as opposed to 3-letter codes like "chi") weren't stripped
+        # at all - both left an orphaned, now-empty "( )" behind too.
+        t, y = clean_media_title("Chang An ( EAC3 ) CHINESE")
+        self.assertEqual(t, "Chang An")
+        self.assertIsNone(y)
+
     def test_extract_main_title(self):
         clean, main, first_w = extract_main_title("DAKAICHI - Im being harassed by the sexiest man of the year (2024)")
         self.assertEqual(clean, "DAKAICHI - Im being harassed by the sexiest man of the year")
@@ -137,11 +145,11 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
 
     def test_resolve_movie_titles_prefers_filename_over_unrelated_metadata_name(self):
         # Jellyfin's "Name" metadata can be wrong in a way cleaning can't fix (bad
-        # provider match, or a container title tag full of leftover technical junk).
+        # provider match, unrelated to any known scene-release/technical noise word).
         # When the user's own filename shares no words at all with it, trust the
         # filename over the metadata.
         movie = {
-            "Name": "Chang An ( EAC3 ) CHINESE",
+            "Name": "Release Group XJ99 Print",
             "OriginalTitle": "",
             "ProductionYear": 2023,
         }
@@ -151,7 +159,24 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         self.assertEqual(preferred, "Chang'e and the Jade Rabbit's Mid-Autumn Adventure")
         # The original (possibly still-correct-for-search) metadata name is kept as a
         # fallback search variant, just no longer the primary/preferred title.
-        self.assertIn("Chang An ( EAC3 ) CHINESE", variants)
+        self.assertIn("Release Group XJ99 Print", variants)
+
+    def test_resolve_movie_titles_cleans_codec_and_language_junk_directly(self):
+        # A container title tag full of leftover technical junk - audio codec (EAC3,
+        # not caught by the old "ac3"-only pattern due to the word boundary) and a
+        # spelled-out language name - should be recovered by cleaning alone, without
+        # needing to fall back to the filename at all.
+        movie = {"Name": "Chang An ( EAC3 ) CHINESE", "OriginalTitle": "", "ProductionYear": 2012}
+        preferred, variants = resolve_movie_titles(movie, "/path/Chang An (2023).mkv")
+        self.assertEqual(preferred, "Chang An")
+
+    def test_resolve_movie_titles_two_word_stopword_title_still_overrides(self):
+        # A genuine two-word filename title where one word is a filler/stopword (e.g.
+        # "The Room") must still count as "substantial" for the override, even though
+        # only one word survives stopword-filtering for the overlap comparison.
+        movie = {"Name": "Release Group XJ99 Print", "OriginalTitle": "", "ProductionYear": 2003}
+        preferred, variants = resolve_movie_titles(movie, "/path/The Room (2003).mkv")
+        self.assertEqual(preferred, "The Room")
 
     def test_resolve_movie_titles_keeps_metadata_name_when_generic_filename(self):
         # A generic/uninformative filename (e.g. a bare "movie.mkv") must not override
