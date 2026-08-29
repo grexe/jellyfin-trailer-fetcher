@@ -306,7 +306,8 @@ def resolve_movie_titles(movie, local_path=""):
     # leftover technical junk (e.g. "Chang An ( EAC3 ) CHINESE" for a movie whose file is
     # correctly named "Chang'e and the Jade Rabbit's Mid-Autumn Adventure"). Trust the
     # filename instead when it looks untrustworthy - see _prefer_filename_over_metadata.
-    if _prefer_filename_over_metadata(name_cand, stem_cand):
+    distrust_metadata = _prefer_filename_over_metadata(name_cand, stem_cand)
+    if distrust_metadata:
         name_cand = stem_cand
 
     # Preferred title for display and file naming:
@@ -321,7 +322,17 @@ def resolve_movie_titles(movie, local_path=""):
 
     # Collect title variants for query generation and filter cross-checks
     title_variants = []
-    if not is_non_latin(preferred_title):
+    if distrust_metadata:
+        # A wrong Name usually means Jellyfin matched this item to an entirely
+        # different movie (e.g. a stale/duplicate library entry from before a file
+        # was migrated into its own folder), not just noisy-but-related text - so
+        # OriginalTitle and the raw Name are from that same wrong match too and can't
+        # be trusted either. A real observed case: Name "The Window" (1949) with
+        # OriginalTitle "Chang" for a file actually named "Chang An (2023).mkv" -
+        # keeping "Chang" as a fallback candidate let it match the real, unrelated
+        # movie "Chang Can Dunk" (bare single word, too generic to trust alone).
+        ordered_candidates = [preferred_title]
+    elif not is_non_latin(preferred_title):
         ordered_candidates = [preferred_title, orig_cand, stem_cand, raw_name]
     else:
         ordered_candidates = [raw_name, orig_cand, stem_cand, preferred_title]

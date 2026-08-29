@@ -159,9 +159,14 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
             movie, "/path/Chang'e and the Jade Rabbit's Mid-Autumn Adventure (2023).mkv"
         )
         self.assertEqual(preferred, "Chang'e and the Jade Rabbit's Mid-Autumn Adventure")
-        # The original (possibly still-correct-for-search) metadata name is kept as a
-        # fallback search variant, just no longer the primary/preferred title.
-        self.assertIn("Release Group XJ99 Print", variants)
+        # A wrong Name isn't kept as a fallback search/match variant: a real observed
+        # case (Name "The Window" / OriginalTitle "Chang" for a file actually named
+        # "Chang An (2023).mkv") showed a mismatched item's OTHER metadata fields are
+        # from that same wrong match too, and kept matching a real, unrelated movie
+        # ("Chang Can Dunk") via the bare single word "Chang". Once Name looks
+        # untrustworthy, nothing from Jellyfin's metadata for this item is used.
+        self.assertNotIn("Release Group XJ99 Print", variants)
+        self.assertEqual(variants, ["Chang'e and the Jade Rabbit's Mid-Autumn Adventure"])
 
     def test_resolve_movie_titles_cleans_codec_and_language_junk_directly(self):
         # A container title tag full of leftover technical junk - audio codec (EAC3,
@@ -179,6 +184,18 @@ class TestTitleResolutionAndExtraction(unittest.TestCase):
         movie = {"Name": "Release Group XJ99 Print", "OriginalTitle": "", "ProductionYear": 2003}
         preferred, variants = resolve_movie_titles(movie, "/path/The Room (2003).mkv")
         self.assertEqual(preferred, "The Room")
+
+    def test_resolve_movie_titles_distrusts_original_title_from_mismatched_item(self):
+        # Real-world case: a stale/duplicate Jellyfin library entry (from before a
+        # file got migrated into its own folder) had Jellyfin identify it as an
+        # entirely different movie - Name "The Window" (1949), OriginalTitle "Chang" -
+        # for a file actually named "Chang An (2023).mkv". OriginalTitle "Chang" is
+        # from that same wrong match, not independently reliable, and its bare single
+        # word previously matched a real, unrelated movie ("Chang Can Dunk").
+        movie = {"Name": "The Window", "OriginalTitle": "Chang", "ProductionYear": 1949}
+        preferred, variants = resolve_movie_titles(movie, "/local/Chang An (2023)/Chang An (2023).mkv")
+        self.assertEqual(preferred, "Chang An")
+        self.assertEqual(variants, ["Chang An"])
 
     def test_resolve_movie_titles_keeps_metadata_name_when_generic_filename(self):
         # A generic/uninformative filename (e.g. a bare "movie.mkv") must not override
@@ -422,6 +439,18 @@ class TestTrailerFilter(unittest.TestCase):
         filter_fn = create_trailer_filter(["Chang An"], movie_duration_sec=6300, is_search=True)
         reason = filter_fn({"duration": 129, "title": "Chang Can Dunk | Official Trailer | Disney+"}, incomplete=False)
         self.assertIn("Rejected.", reason)
+
+    def test_search_filter_bare_original_title_alone_is_too_weak(self):
+        # Documents why the "Chang" false positive had to be fixed upstream in
+        # resolve_movie_titles rather than here: a bare single word trivially phrase-
+        # matches (a 1-word "phrase" is contiguous by definition) with only a
+        # non-numeric-suffix guard, unlike the >=2-significant-word floor that only
+        # applies to the non-contiguous word-list fallback. If a bare single-word
+        # candidate like a mismatched item's OriginalTitle ever reaches this filter,
+        # it is NOT rejected - hence resolve_movie_titles excludes it entirely instead.
+        filter_fn = create_trailer_filter(["Chang"], movie_duration_sec=6300, is_search=True)
+        reason = filter_fn({"duration": 129, "title": "Chang Can Dunk | Official Trailer | Disney+"}, incomplete=False)
+        self.assertIsNone(reason)
 
     def test_search_filter_allows_year_right_after_title(self):
         # A release year immediately after the title is a normal trailer title pattern
