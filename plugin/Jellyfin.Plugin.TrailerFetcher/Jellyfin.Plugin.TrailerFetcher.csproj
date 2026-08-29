@@ -15,6 +15,10 @@
     <PackageReference Include="Jellyfin.Model" Version="10.10.7">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <PackageReference Include="Jellyfin.Common" Version="10.10.7">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

@@ -48,17 +48,25 @@
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="CookiesFilePath">Cookies file path</label>
-                        <input id="CookiesFilePath" name="CookiesFilePath" type="text" is="emby-input" placeholder="/config/data/trailer-fetcher/cookies.txt" />
+                        <label class="inputLabel">Cookies file</label>
+                        <div id="CookiesStatus" class="fieldDescription">No cookies file uploaded.</div>
+                        <input id="CookiesFileInput" type="file" accept=".txt" style="display:none" />
+                        <button is="emby-button" type="button" id="CookiesUploadButton" class="raised button-cancel block emby-button">
+                            <span>Upload cookies.txt</span>
+                        </button>
+                        <button is="emby-button" type="button" id="CookiesRemoveButton" class="raised button-cancel block emby-button" style="display:none">
+                            <span>Remove cookies file</span>
+                        </button>
                         <div class="fieldDescription">
-                            Path to a Netscape-format cookies.txt file on the server, used by yt-dlp for authenticated/age-restricted
-                            YouTube access. Leave empty to fetch without authentication.
+                            A Netscape-format cookies.txt file (exported from a signed-in, age-verified YouTube account via a
+                            browser extension such as "Get cookies.txt"), used by yt-dlp for authenticated/age-restricted access.
+                            Uploaded to the server and saved immediately - it is not part of the Save button below.
                         </div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="MaxTrailerDurationSeconds">Maximum trailer duration (seconds)</label>
-                        <input id="MaxTrailerDurationSeconds" name="MaxTrailerDurationSeconds" type="number" is="emby-input" min="30" />
+                        <input id="MaxTrailerDurationSeconds" name="MaxTrailerDurationSeconds" type="number" is="emby-input" min="30" value="300" />
                         <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
                     </div>
 
@@ -75,6 +83,22 @@
                 pluginUniqueId: '03385b47-ccda-4a9e-86a2-c0b1f80fa332'
             };
 
+            function updateCookiesStatus(path) {
+                var statusEl = document.querySelector('#CookiesStatus');
+                var removeButton = document.querySelector('#CookiesRemoveButton');
+                if (path) {
+                    statusEl.textContent = 'Current file: ' + path;
+                    removeButton.style.display = '';
+                } else {
+                    statusEl.textContent = 'No cookies file uploaded.';
+                    removeButton.style.display = 'none';
+                }
+            }
+
+            function authHeader() {
+                return 'MediaBrowser Token="' + ApiClient.accessToken() + '"';
+            }
+
             document.querySelector('#TrailerFetcherConfigPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -83,9 +107,64 @@
                         document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;
                         document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
                         document.querySelector('#DryRun').checked = config.DryRun;
-                        document.querySelector('#CookiesFilePath').value = config.CookiesFilePath;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
+                        updateCookiesStatus(config.CookiesFilePath);
                         Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#CookiesUploadButton')
+                .addEventListener('click', function () {
+                    document.querySelector('#CookiesFileInput').click();
+                });
+
+            document.querySelector('#CookiesFileInput')
+                .addEventListener('change', function (e) {
+                    var file = e.target.files[0];
+                    if (!file) {
+                        return;
+                    }
+
+                    var formData = new FormData();
+                    formData.append('file', file);
+
+                    Dashboard.showLoadingMsg();
+                    fetch(ApiClient.serverAddress() + '/TrailerFetcher/Cookies', {
+                        method: 'POST',
+                        headers: { 'Authorization': authHeader() },
+                        body: formData
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Upload failed: ' + response.status);
+                        }
+                        return response.text();
+                    }).then(function (path) {
+                        updateCookiesStatus(path.replace(/^"|"$/g, ''));
+                        Dashboard.hideLoadingMsg();
+                        Dashboard.alert('Cookies file uploaded.');
+                    }).catch(function (err) {
+                        Dashboard.hideLoadingMsg();
+                        Dashboard.alert('Failed to upload cookies file: ' + err.message);
+                    }).finally(function () {
+                        e.target.value = '';
+                    });
+                });
+
+            document.querySelector('#CookiesRemoveButton')
+                .addEventListener('click', function () {
+                    Dashboard.showLoadingMsg();
+                    fetch(ApiClient.serverAddress() + '/TrailerFetcher/Cookies', {
+                        method: 'DELETE',
+                        headers: { 'Authorization': authHeader() }
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Remove failed: ' + response.status);
+                        }
+                        updateCookiesStatus(null);
+                        Dashboard.hideLoadingMsg();
+                    }).catch(function (err) {
+                        Dashboard.hideLoadingMsg();
+                        Dashboard.alert('Failed to remove cookies file: ' + err.message);
                     });
                 });
 
@@ -97,7 +176,6 @@
                         config.MigrateToFolders = document.querySelector('#MigrateToFolders').value;
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;
-                        config.CookiesFilePath = document.querySelector('#CookiesFilePath').value;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
                         ApiClient.updatePluginConfiguration(TrailerFetcherConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
