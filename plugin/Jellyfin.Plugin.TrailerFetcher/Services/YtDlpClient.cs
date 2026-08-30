@@ -82,14 +82,21 @@ public class YtDlpClient
             args.Add("node");
         }
 
-        // Only web-family clients honor cookies for authenticated/age-restricted access;
-        // android/ios don't support cookies at all. Keep them as fallbacks only when
-        // there are no cookies to use.
+        // Deliberately NOT pinning --extractor-args youtube:player_client. This used
+        // to hardcode "web,android,ios" (only "web" when cookies are set, since
+        // android/ios don't support cookies at all), which made sense when the
+        // standalone script was written but became actively harmful as YouTube's
+        // defenses evolved: android/ios formats are now routinely filtered out by
+        // SABR/PO-token requirements, and confirmed live - explicitly restricting to
+        // that list produced only a legacy fallback format (or, on one server,
+        // storyboard-images-only) where yt-dlp's own default client selection found
+        // proper adaptive formats via a different client entirely. yt-dlp's defaults
+        // are actively maintained to route around exactly this kind of restriction as
+        // YouTube changes; a client list pinned once and never revisited can only get
+        // staler over time. yt-dlp already skips clients that don't support cookies
+        // automatically when --cookies is set, so no extra handling is needed for that
+        // case either.
         var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
-        var playerClients = hasCookies ? "web" : "web,android,ios";
-        args.Add("--extractor-args");
-        args.Add($"youtube:player_client={playerClients}");
-
         if (hasCookies)
         {
             args.Add("--cookies");
@@ -171,27 +178,29 @@ public class YtDlpClient
     }
 
     /// <summary>
-    /// Download a specific video URL into <paramref name="destinationPath"/>, retrying
-    /// once on failure. A single candidate occasionally fails for reasons that don't
-    /// reproduce on a second attempt (a network blip, a momentary hiccup in yt-dlp's
-    /// own JS-runtime-based signature deciphering) - confirmed by hand: a video that
-    /// failed once with "Requested format is not available" during a real run
-    /// downloaded successfully both times it was retried manually immediately after,
-    /// with the exact same command. One retry is cheap insurance against that without
-    /// masking a genuinely broken/unavailable video, which will just fail again.
+    /// Download a specific video URL into <paramref name="destinationPath"/>. First
+    /// tries yt-dlp's own default client selection (best chance at a higher-quality
+    /// adaptive format when one is actually downloadable); if that fails, retries once
+    /// with "player_client=mweb" specifically. This isn't a generic retry - it's
+    /// targeting a specific, confirmed failure pattern: yt-dlp's default selection can
+    /// pick a client (e.g. "android_vr") whose formats extract fine but consistently
+    /// 403 on the actual download, reproduced by hand multiple times. "mweb" doesn't
+    /// have that problem: its adaptive formats get filtered for lacking a PO token, but
+    /// it then falls back cleanly to a legacy, reliably-downloadable format instead of
+    /// failing outright - confirmed reliable across repeated manual attempts.
     /// </summary>
     public async Task<bool> DownloadAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
-        if (await DownloadOnceAsync(url, destinationPath, cancellationToken).ConfigureAwait(false))
+        if (await DownloadOnceAsync(url, destinationPath, playerClientOverride: null, cancellationToken).ConfigureAwait(false))
         {
             return true;
         }
 
-        _logger.LogInformation("  > Retrying download once...");
-        return await DownloadOnceAsync(url, destinationPath, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("  > Retrying download with a more conservative client (mweb)...");
+        return await DownloadOnceAsync(url, destinationPath, playerClientOverride: "mweb", cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> DownloadOnceAsync(string url, string destinationPath, CancellationToken cancellationToken)
+    private async Task<bool> DownloadOnceAsync(string url, string destinationPath, string? playerClientOverride, CancellationToken cancellationToken)
     {
         var tmpDir = Directory.CreateTempSubdirectory("trailer-fetcher-");
         try
@@ -205,6 +214,11 @@ public class YtDlpClient
                 "-o", tmpPattern
             };
             args.AddRange(CommonArgs());
+            if (playerClientOverride is not null)
+            {
+                args.Add("--extractor-args");
+                args.Add($"youtube:player_client={playerClientOverride}");
+            }
             args.Add(url);
 
             var (_, _, stderr) = await RunAsync(args, cancellationToken).ConfigureAwait(false);

@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.10.0",
+        "changelog": "Found and fixed the actual root cause of the \"Only images are available\" failures (deno confirmed fully functional in 0.8.9.0's diagnostics). Removed the hardcoded --extractor-args youtube:player_client=web,android,ios override - it made sense when the standalone script was written, but confirmed live and by hand: it's become actively harmful as YouTube's defenses evolved (android/ios are now routinely filtered by SABR/PO-token requirements), while yt-dlp's own default client selection (actively maintained upstream to route around exactly this) found proper adaptive formats via a different client. That default choice isn't fully reliable either though - confirmed live and reproduced consistently by hand: its first-choice client's formats can extract fine but 403 on the actual download. DownloadAsync now tries the default first, and retries with an explicit player_client=mweb on failure specifically (not just repeating the same command) - mweb's own adaptive formats get filtered the same way, but it then falls back cleanly to a legacy, reliably-downloadable format instead of failing outright, confirmed consistent across repeated attempts. Verified the whole two-tier sequence end to end against the exact failing video before shipping.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.10.0.zip",
+        "checksum": "83a926f0087ba38f4fff4bab96554c0a",
+        "timestamp": "2026-08-30T22:57:12Z"
+      },
+      {
         "version": "0.8.9.0",
         "changelog": "Diagnostic-only addition. The previous release's added logging revealed the real yt-dlp error: \"WARNING: Only images are available for download\" - meaning YouTube served no real video/audio formats at all on that server, only storyboard images, which happens when YouTube enforces SABR-only streaming and the signature challenge solver can't actually run - even when a JS runtime binary is present on disk, since that doesn't prove it actually executes successfully from inside Jellyfin's own process (permissions/sandboxing can differ from a manual test). DependencyProvisioner now runs \"deno --version\" in that same execution context - once after downloading it, and once on every run where it was already present - and logs the result, to get a definitive per-run answer instead of inferring deno's health from a downstream symptom that has more than one possible cause.",
         "targetAbi": "10.11.0.0",
