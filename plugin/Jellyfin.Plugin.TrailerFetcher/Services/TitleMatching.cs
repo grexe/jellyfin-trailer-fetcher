@@ -42,6 +42,16 @@ public static partial class TitleMatching
     [GeneratedRegex(@"[\(\[]\s*(19\d{2}|20\d{2})\s*[\)\]]")]
     private static partial Regex ParenYearRegex();
 
+    // A year *range* ("(1994-2019)", an anthology/box-set's airing span) doesn't match
+    // ParenYearRegex at all (that requires a single year alone in the parens/brackets) -
+    // checked first so the whole range gets consumed as one unit. Otherwise
+    // StandaloneYearRegex still matches just the first year on its own (its bounding
+    // character class treats the dash as a valid delimiter), stripping only "1994" and
+    // leaving "( -2019)" behind - confirmed live on a Shinichiro Watanabe anthology
+    // folder titled "... (1994-2019) - 8 Complete TV Series, ...".
+    [GeneratedRegex(@"[\(\[]\s*(19\d{2}|20\d{2})\s*[-–—]\s*(?:19\d{2}|20\d{2})\s*[\)\]]")]
+    private static partial Regex ParenYearRangeRegex();
+
     [GeneratedRegex(@"(?:^|[\s._\-(])(19\d{2}|20\d{2})(?:$|[\s._\-)])")]
     private static partial Regex StandaloneYearRegex();
 
@@ -80,8 +90,14 @@ public static partial class TitleMatching
         var s = BracketedRegex().Replace(title, " ");
 
         string? year = null;
+        var rangeMatch = ParenYearRangeRegex().Match(title);
         var parenMatch = ParenYearRegex().Match(title);
-        if (parenMatch.Success)
+        if (rangeMatch.Success)
+        {
+            year = rangeMatch.Groups[1].Value;
+            s = ParenYearRangeRegex().Replace(s, " ");
+        }
+        else if (parenMatch.Success)
         {
             year = parenMatch.Groups[1].Value;
             s = Regex.Replace(s, @"[\(\[]\s*" + Regex.Escape(year) + @"\s*[\)\]]", " ");

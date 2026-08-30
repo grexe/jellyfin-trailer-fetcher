@@ -82,23 +82,19 @@ public class YtDlpClient
             args.Add("node");
         }
 
-        // No player_client override at all when there's no cookies file - see
-        // DownloadAsync's doc comment for why the old hardcoded "web,android,ios" list
-        // was removed there. But a configured cookies file only actually takes effect
-        // on the "web" client: the app-style internal clients (android, ios, mweb, tv,
-        // android_vr, ...) authenticate via device tokens, not cookies, and silently
-        // ignore a cookies file entirely regardless of --cookies being set (confirmed
-        // live: an age-restricted video failed with "Sign in to confirm your age" even
-        // with valid, verified-account cookies uploaded, because yt-dlp's now-default
-        // client selection picked something other than "web" for it). So cookies
-        // still force player_client=web specifically - the one case where leaving
-        // client selection fully open is wrong, since a client that ignores the
-        // cookies isn't actually a fallback for what they're there to do.
+        // No player_client override here at all, even when cookies are configured -
+        // unconditionally forcing "web" for every request whenever a cookies file
+        // exists was tried (0.8.12.0) and confirmed live to reintroduce the exact
+        // "Only images are available for download" failure 0.8.10.0 removed this
+        // override to fix, for videos that have nothing to do with age-verification.
+        // Cookies only matter for the (comparatively rare) subset of requests that
+        // actually hit an age/sign-in wall; DownloadAsync now handles that as a
+        // targeted retry tier instead (forcing player_client=web only after the
+        // default selection has already failed), so most requests still get yt-dlp's
+        // full, unrestricted, actively-maintained client selection.
         var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
         if (hasCookies)
         {
-            args.Add("--extractor-args");
-            args.Add("youtube:player_client=web");
             args.Add("--cookies");
             args.Add(_cookiesFilePath!);
         }
@@ -178,21 +174,35 @@ public class YtDlpClient
     }
 
     /// <summary>
-    /// Download a specific video URL into <paramref name="destinationPath"/>. First
-    /// tries yt-dlp's own default client selection (best chance at a higher-quality
-    /// adaptive format when one is actually downloadable); if that fails, retries once
-    /// with "player_client=mweb" specifically. This isn't a generic retry - it's
-    /// targeting a specific, confirmed failure pattern: yt-dlp's default selection can
-    /// pick a client (e.g. "android_vr") whose formats extract fine but consistently
-    /// 403 on the actual download, reproduced by hand multiple times. "mweb" doesn't
-    /// have that problem: its adaptive formats get filtered for lacking a PO token, but
-    /// it then falls back cleanly to a legacy, reliably-downloadable format instead of
-    /// failing outright - confirmed reliable across repeated manual attempts. When a
-    /// cookies file is configured, the "mweb" fallback is skipped in favor of a plain
-    /// retry - "mweb" doesn't honor cookies at all (see CommonArgs), so falling back to
-    /// it would silently drop the authenticated/age-restricted access the cookies were
-    /// there for, confirmed live: an age-restricted video failed with "Sign in to
-    /// confirm your age" despite a valid, verified-account cookies file being uploaded.
+    /// Download a specific video URL into <paramref name="destinationPath"/>, in up to
+    /// three tiers:
+    ///
+    /// 1. yt-dlp's own default client selection, no override - best chance at a
+    ///    higher-quality adaptive format when one is actually downloadable, and works
+    ///    for the vast majority of (non-age-restricted) videos.
+    /// 2. If that fails AND a cookies file is configured, retry with
+    ///    player_client=web specifically. A cookies file only actually takes effect on
+    ///    the "web" client - the app-style clients (android, ios, mweb, tv,
+    ///    android_vr, ...) authenticate via device tokens and silently ignore a
+    ///    cookies file regardless of --cookies being set - so this tier exists
+    ///    specifically to give an age-restricted video its one shot at using the
+    ///    cookies at all. This tier is skipped entirely when no cookies are
+    ///    configured, since forcing "web" wouldn't accomplish anything without them.
+    /// 3. If that still fails (or there were no cookies to try tier 2 with), retry
+    ///    with player_client=mweb. This targets a different, confirmed failure
+    ///    pattern: yt-dlp's default selection can pick a client (e.g. "android_vr")
+    ///    whose formats extract fine but consistently 403 on the actual download,
+    ///    reproduced by hand multiple times. "mweb" doesn't have that problem: its
+    ///    adaptive formats get filtered for lacking a PO token, but it then falls back
+    ///    cleanly to a legacy, reliably-downloadable format instead of failing
+    ///    outright - confirmed reliable across repeated manual attempts.
+    ///
+    /// Unconditionally forcing "web" for every download whenever cookies were merely
+    /// configured (regardless of whether that specific video needed them) was tried
+    /// and confirmed live to reintroduce tier 3's "Only images are available for
+    /// download" failure for ordinary, non-restricted videos, since it skipped tier 3
+    /// entirely in that case - hence tier 2 only ever running as a targeted retry
+    /// after tier 1 has already failed, not as the default.
     /// </summary>
     public async Task<bool> DownloadAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
@@ -201,17 +211,14 @@ public class YtDlpClient
             return true;
         }
 
-        // A configured cookies file only actually takes effect on the "web" client -
-        // CommonArgs already forces player_client=web whenever cookies are set, since
-        // the app-style clients ignore cookies entirely (see CommonArgs' doc comment).
-        // Falling back to "mweb" here would silently drop that authentication for the
-        // retry, so retry the same web-forced command instead in that case rather than
-        // adding a second, conflicting player_client override on top of it.
         var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
         if (hasCookies)
         {
-            _logger.LogInformation("  > Retrying download once...");
-            return await DownloadOnceAsync(url, destinationPath, playerClientOverride: null, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("  > Retrying download with player_client=web (cookies configured)...");
+            if (await DownloadOnceAsync(url, destinationPath, playerClientOverride: "web", cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
         }
 
         _logger.LogInformation("  > Retrying download with a more conservative client (mweb)...");

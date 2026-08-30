@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.13.0",
+        "changelog": "Two fixes. (1) 0.8.12.0 over-corrected: forcing player_client=web for EVERY download whenever a cookies file was merely configured (regardless of whether that specific video needed it) reintroduced 0.8.10.0's \"Only images are available for download\" failure for ordinary, non-restricted videos, confirmed live. DownloadAsync now has three tiers instead of two: try the default client first, retry with player_client=web only if that failed AND cookies are configured (a targeted shot at the age-verification case), then fall back to mweb if that still fails too. (2) Fixed a year-range (\"(1994-2019)\", an anthology/box-set's airing span) not being recognized as a unit by the year-extraction regex - only the first year was getting stripped, leaving \"( -2019)\" behind in the resolved title. Confirmed live on a Shinichiro Watanabe anthology folder. Fixed in the shared TitleMatching.CleanMediaTitle since a movie box set could hit the same pattern.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.13.0.zip",
+        "checksum": "e05ae33fcabb41ddb1205c364f0c0920",
+        "timestamp": "2026-08-30T23:23:12Z"
+      },
+      {
         "version": "0.8.12.0",
         "changelog": "Fixed a regression from 0.8.10.0 that broke cookies-based authenticated/age-restricted access: an age-restricted video failed with \"Sign in to confirm your age\" despite a valid, verified-account cookies.txt being uploaded. 0.8.10.0 removed the player_client override entirely, but it had been doing two different jobs - restricting to a now-stale \"web,android,ios\" list (correctly removed) and forcing player_client=web whenever cookies were configured (needed, and removed by mistake): a cookies file only actually takes effect on the \"web\" client, since the app-style clients (android, ios, mweb, tv, android_vr, ...) authenticate via device tokens and silently ignore a cookies file regardless of --cookies being set. CommonArgs now forces player_client=web again specifically when a cookies file is configured. Also updated DownloadAsync's mweb retry fallback to skip itself (retrying the same web-forced command instead) whenever cookies are set, since mweb doesn't honor cookies either and would have sent yt-dlp two conflicting player_client overrides in the same command.",
         "targetAbi": "10.11.0.0",
