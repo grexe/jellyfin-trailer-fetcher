@@ -48,9 +48,6 @@ public static partial class TitleMatching
     [GeneratedRegex(@"^\s*0*\d{1,3}\s*[\.\-_]\s*")]
     private static partial Regex LeadingTrackNumberPunctRegex();
 
-    [GeneratedRegex(@"^\s*0*\d{1,3}\s+")]
-    private static partial Regex LeadingTrackNumberSpaceRegex();
-
     private static readonly string[] NoisePatterns =
     [
         @"\b(720p|1080p|1080i|2160p|4k|uhd|hd|sd|480p|360p)\b",
@@ -100,8 +97,14 @@ public static partial class TitleMatching
             }
         }
 
+        // Only a punctuation-anchored prefix ("01. ", "01 - ", "01_") is treated as a
+        // scene-release/track-number artifact to strip. A bare "number + space" prefix
+        // (no separator) was also stripped here previously, but that has no structural
+        // signal distinguishing a real track number from a title that genuinely starts
+        // with a digit ("5 Centimeters per Second", "12 Monkeys", "300", "8 Mile") -
+        // confirmed live: it silently turned "5 Centimeters Per Second" into "Centimeters
+        // Per Second" and broke every search query for that title.
         s = LeadingTrackNumberPunctRegex().Replace(s, string.Empty);
-        s = LeadingTrackNumberSpaceRegex().Replace(s, string.Empty);
 
         foreach (var re in NoiseRegexes)
         {

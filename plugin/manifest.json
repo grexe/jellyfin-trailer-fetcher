@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.3.0",
+        "changelog": "Fixed a title-matching bug that broke every search for \"5 Centimeters per Second\" (and would break any title genuinely starting with a number - \"12 Monkeys\", \"300\", \"8 Mile\", etc.): the scene-release-cleanup heuristic stripped any leading \"number + whitespace\" as if it were a track/episode number, with no structural signal distinguishing that from a title that just starts with a digit. Removed that overly broad rule - kept the punctuation-anchored one (\"01. \", \"01 - \", \"01_\", still needed for real scene-numbered filenames) since a genuine title essentially never has a period/dash/underscore directly after a leading number. Verified against both the exact failing title and a set of real scene-numbered filenames to confirm the legitimate case still works. This heuristic was ported verbatim from the standalone script, which likely has the same latent bug.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.3.0.zip",
+        "checksum": "4a1bfc574a446c96b86e6495c48943eb",
+        "timestamp": "2026-08-30T21:53:12Z"
+      },
+      {
         "version": "0.8.2.0",
         "changelog": "Fixed a real miss reported from live testing: probing a candidate (yt-dlp -j --skip-download) hard-failed with \"Requested format is not available\" for some videos, discarding otherwise-fully-extracted title/duration/webpage_url metadata over a format-selection problem that doesn't matter during a metadata-only probe. Added --ignore-no-formats-error to the probe call specifically (not the actual download, which does need a real format) - verified against the exact failing video from the report: probing now returns full metadata, and the subsequent download succeeds too (yt-dlp falls back to a pre-merged format when the preferred bestvideo+bestaudio combo isn't available, e.g. due to a missing PO token). Not series-specific despite surfacing during series testing - RemoteTrailers URLs are sourced identically for movies and series, this was always a latent gap in the movie path too.",
         "targetAbi": "10.11.0.0",
