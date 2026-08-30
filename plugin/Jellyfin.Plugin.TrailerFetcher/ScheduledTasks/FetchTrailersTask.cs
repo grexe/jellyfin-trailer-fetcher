@@ -109,22 +109,44 @@ public class FetchTrailersTask : IScheduledTask
         var ytDlp = await BuildYtDlpClientAsync(config, ffmpegDir, cancellationToken).ConfigureAwait(false);
         var stats = new TrailerFetchStats();
         var totalItems = movies.Count + series.Count;
+        var startedAt = DateTime.UtcNow;
 
-        for (var i = 0; i < movies.Count; i++)
+        // Cancelling a run (e.g. from the dashboard) must still leave the summary
+        // reflecting whatever was found before it stopped, rather than silently
+        // leaving a stale summary from a previous run on display - so the cancellation
+        // is caught here (not left to propagate straight out of the loops), the
+        // partial summary is logged/persisted, and only then is it rethrown so
+        // Jellyfin's TaskManager still correctly reports the run as cancelled rather
+        // than completed.
+        OperationCanceledException? cancellation = null;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await ProcessMovieAsync(movies[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
-            progress.Report((i + 1) * 100.0 / totalItems);
+            for (var i = 0; i < movies.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ProcessMovieAsync(movies[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                progress.Report((i + 1) * 100.0 / totalItems);
+            }
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ProcessSeriesAsync(series[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                progress.Report((movies.Count + i + 1) * 100.0 / totalItems);
+            }
+        }
+        catch (OperationCanceledException ex)
+        {
+            cancellation = ex;
         }
 
-        for (var i = 0; i < series.Count; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await ProcessSeriesAsync(series[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
-            progress.Report((movies.Count + i + 1) * 100.0 / totalItems);
-        }
+        LogSummary(stats, movies.Count, series.Count, config.DryRun, startedAt, aborted: cancellation is not null);
 
-        LogSummary(stats, movies.Count, series.Count, config.DryRun);
+        if (cancellation is not null)
+        {
+            _logger.LogInformation("Run cancelled - see the summary above for what was found before it stopped.");
+            throw cancellation;
+        }
 
         // Trigger a single library scan (not one per movie/series) so Jellyfin picks up
         // every newly downloaded trailer file, and any moved/migrated paths, in one pass.
@@ -170,6 +192,20 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         var managedDeno = await provisioner.EnsureDenoAsync(cancellationToken).ConfigureAwait(false);
+        if (managedDeno is null)
+        {
+            // Not fatal - yt-dlp falls back to a bare "deno"/"node" PATH lookup, which
+            // usually finds nothing on a stock container - but many videos only need
+            // deno-based signature deciphering for their higher-quality formats, so
+            // this can silently turn into "every download fails with 'no formats
+            // available'" instead of a clear, attributable error. Worth a clear log
+            // line rather than only showing up as a downstream symptom.
+            _logger.LogWarning(
+                "Could not provision deno; yt-dlp will fall back to a bare PATH lookup for a JS runtime, which " +
+                "will likely find nothing. Videos needing signature deciphering for their formats may fail to download.");
+        }
+
+        _logger.LogInformation("Using yt-dlp: {YtDlpPath}, deno: {DenoPath}", managedYtDlp, managedDeno ?? "(not available)");
         return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, _logger);
     }
 
@@ -449,12 +485,15 @@ public class FetchTrailersTask : IScheduledTask
         }
     }
 
-    private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun)
+    private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun, DateTime startedAt, bool aborted)
     {
+        var completedAt = DateTime.UtcNow;
         RunSummaryStore.Save(
             Plugin.Instance!.DataFolderPath,
             new RunSummary(
-                DateTime.UtcNow,
+                completedAt,
+                (completedAt - startedAt).TotalSeconds,
+                aborted,
                 dryRun,
                 totalMovies,
                 stats.Scanned,
@@ -473,31 +512,42 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation(string.Empty);
         _logger.LogInformation("==========================================");
-        _logger.LogInformation("           TRAILER SYNC SUMMARY           ");
+        _logger.LogInformation(aborted ? "        TRAILER SYNC SUMMARY [ABORTED]    " : "           TRAILER SYNC SUMMARY           ");
         _logger.LogInformation("==========================================");
-        _logger.LogInformation("  Total Movies in Library : {Count}", totalMovies);
-        _logger.LogInformation("  Movies Processed        : {Count}", stats.Scanned);
-        _logger.LogInformation("  Already had Trailer     : {Count}", stats.AlreadyHadTrailer);
-        _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", stats.Downloaded);
-        _logger.LogInformation("  No Trailer Found        : {Count}", stats.NotFound);
-        if (stats.Skipped > 0)
-        {
-            _logger.LogInformation("  Skipped (Unreachable)   : {Count}", stats.Skipped);
-        }
 
-        if (stats.Renamed > 0)
+        // Only the libraries actually in scope for this run get a section - a run
+        // scoped to series-only libraries showing "Total Movies in Library: 0" reads
+        // as if something's wrong rather than as "no movies were in scope".
+        if (totalMovies > 0)
         {
-            _logger.LogInformation("  Original Files Renamed  : {Count}", stats.Renamed);
-        }
+            _logger.LogInformation("  Total Movies in Library : {Count}", totalMovies);
+            _logger.LogInformation("  Movies Processed        : {Count}", stats.Scanned);
+            _logger.LogInformation("  Already had Trailer     : {Count}", stats.AlreadyHadTrailer);
+            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", stats.Downloaded);
+            _logger.LogInformation("  No Trailer Found        : {Count}", stats.NotFound);
+            if (stats.Skipped > 0)
+            {
+                _logger.LogInformation("  Skipped (Unreachable)   : {Count}", stats.Skipped);
+            }
 
-        if (stats.Migrated > 0)
-        {
-            _logger.LogInformation("  Migrated to Own Folder  : {Count}", stats.Migrated);
+            if (stats.Renamed > 0)
+            {
+                _logger.LogInformation("  Original Files Renamed  : {Count}", stats.Renamed);
+            }
+
+            if (stats.Migrated > 0)
+            {
+                _logger.LogInformation("  Migrated to Own Folder  : {Count}", stats.Migrated);
+            }
         }
 
         if (totalSeries > 0)
         {
-            _logger.LogInformation("  ---------------- TV Series --------------");
+            if (totalMovies > 0)
+            {
+                _logger.LogInformation("  ---------------- TV Series --------------");
+            }
+
             _logger.LogInformation("  Total Series in Library : {Count}", totalSeries);
             _logger.LogInformation("  Series Processed        : {Count}", stats.SeriesScanned);
             _logger.LogInformation("  Already had Trailer     : {Count}", stats.SeriesAlreadyHadTrailer);
@@ -507,6 +557,11 @@ public class FetchTrailersTask : IScheduledTask
             {
                 _logger.LogInformation("  Skipped (No Folder)     : {Count}", stats.SeriesSkipped);
             }
+        }
+
+        if (totalMovies == 0 && totalSeries == 0)
+        {
+            _logger.LogInformation("  Nothing in scope for this run.");
         }
 
         _logger.LogInformation("==========================================");

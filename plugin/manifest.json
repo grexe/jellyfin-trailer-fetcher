@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.8.0",
+        "changelog": "Three fixes from live testing. (1) The \"Last run\" summary is now cancellation-safe: cancelling a run used to skip saving the summary entirely, leaving a stale summary from a previous run on display - the movie/series loops are now wrapped so the summary is always logged/persisted with whatever was found before it stopped (marked \"cancelled - partial results\"), then the cancellation is rethrown so Jellyfin's TaskManager still correctly reports it as cancelled rather than completed. (2) The summary now only shows a Movies or TV Series section for libraries actually in scope for that run, instead of always showing \"Total Movies in Library: 0\" for a run scoped to series-only libraries. (3) Replaced the full ISO \"Completed\" table row with a compact date + time + duration line above the table. Also added diagnostic logging (yt-dlp's WARNING lines, and the resolved yt-dlp/deno paths) to help pin down a reported case where every download failed with \"Requested format is not available\" on one server.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.8.0.zip",
+        "checksum": "241e173f6e04f3c6b5f56382d8f99c1d",
+        "timestamp": "2026-08-30T22:38:38Z"
+      },
+      {
         "version": "0.8.7.0",
         "changelog": "Two fixes. The settings page's \"Last run\" table styling never actually applied (confirmed against 0.8.6.0, incognito included): Jellyfin's dashboard loads a plugin's config page by injecting its body content into the existing app shell, which drops the page's own <head> - a <style> block there silently never took effect. Rewrote the table to style itself entirely via inline styles set in JS instead, which can't be dropped that way. Also added a single retry to YtDlpClient.DownloadAsync: a download that failed with \"Requested format is not available\" during a real run was verified (by hand, twice, with the exact same command) to succeed immediately after - a transient hiccup, not a persistent problem with that video - so one retry is cheap insurance against exactly that without masking a genuinely unavailable video, which will just fail again on the retry too.",
         "targetAbi": "10.11.0.0",

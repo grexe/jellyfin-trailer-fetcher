@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.7.0"
+version: "0.8.8.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,25 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.8.0: Three fixes from live testing. (1) The "Last run" summary is now
+  cancellation-safe: cancelling a run used to skip saving the summary entirely,
+  leaving a stale summary from a previous run on display - the movie/series loops
+  are now wrapped so the summary is always logged/persisted with whatever was found
+  before it stopped (marked "cancelled - partial results"), then the cancellation is
+  rethrown so Jellyfin's TaskManager still correctly reports it as cancelled rather
+  than completed. (2) The summary now only shows a Movies or TV Series section for
+  libraries actually in scope for that run, instead of always showing "Total Movies
+  in Library: 0" for a run scoped to series-only libraries. (3) Replaced the full ISO
+  "Completed" table row with a compact date + time + duration line above the table
+  (a new DurationSeconds field, tracked from a start timestamp captured at the top of
+  ExecuteAsync). Also added a single retry-worthy diagnostic: yt-dlp's WARNING lines
+  (not just the final ERROR line) are now logged on a probe/download failure, and the
+  resolved yt-dlp/deno paths are logged once per run - added while investigating a
+  report of every download failing with "Requested format is not available" for
+  every query on one server, to help pin down whether that server's managed deno
+  binary is actually working.
+
+
   0.8.7.0: Two fixes. The settings page's "Last run" table styling never actually
   applied (confirmed against 0.8.6.0, incognito included): Jellyfin's dashboard loads
   a plugin's config page by injecting its body content into the existing app shell,

@@ -8,6 +8,8 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 /// <summary>The outcome of the most recent "Fetch Missing Trailers" task run, shown on the settings page.</summary>
 public record RunSummary(
     [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc,
+    [property: JsonPropertyName("durationSeconds")] double DurationSeconds,
+    [property: JsonPropertyName("aborted")] bool Aborted,
     [property: JsonPropertyName("dryRun")] bool DryRun,
     [property: JsonPropertyName("totalMovies")] int TotalMovies,
     [property: JsonPropertyName("scanned")] int Scanned,

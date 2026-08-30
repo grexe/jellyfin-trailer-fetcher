@@ -175,28 +175,50 @@
                         return;
                     }
 
-                    var rows = [
-                        { label: 'Completed', value: new Date(summary.completedAtUtc).toLocaleString() + (summary.dryRun ? ' (dry run)' : '') },
-                        { label: 'Total movies in library', value: summary.totalMovies },
-                        { label: 'Movies processed', value: summary.scanned },
-                        { label: 'Already had trailer', value: summary.alreadyHadTrailer },
-                        { label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.downloaded },
-                        { label: 'No trailer found', value: summary.notFound }
-                    ];
-                    if (summary.skipped > 0) {
-                        rows.push({ label: 'Skipped (unreachable)', value: summary.skipped });
+                    function formatDuration(totalSeconds) {
+                        var seconds = Math.max(0, Math.round(totalSeconds || 0));
+                        var h = Math.floor(seconds / 3600);
+                        var m = Math.floor((seconds % 3600) / 60);
+                        var s = seconds % 60;
+                        if (h > 0) {
+                            return h + 'h ' + m + 'm';
+                        }
+                        if (m > 0) {
+                            return m + 'm ' + s + 's';
+                        }
+                        return s + 's';
                     }
 
-                    if (summary.renamed > 0) {
-                        rows.push({ label: 'Original files renamed', value: summary.renamed });
-                    }
+                    var rows = [];
 
-                    if (summary.migrated > 0) {
-                        rows.push({ label: 'Migrated to own folder', value: summary.migrated });
+                    // Only the libraries actually in scope for this run get a section -
+                    // a run scoped to series-only libraries showing "Total movies in
+                    // library: 0" reads as if something's wrong rather than as "no
+                    // movies were in scope".
+                    if (summary.totalMovies > 0) {
+                        rows.push({ label: 'Total movies in library', value: summary.totalMovies });
+                        rows.push({ label: 'Movies processed', value: summary.scanned });
+                        rows.push({ label: 'Already had trailer', value: summary.alreadyHadTrailer });
+                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.downloaded });
+                        rows.push({ label: 'No trailer found', value: summary.notFound });
+                        if (summary.skipped > 0) {
+                            rows.push({ label: 'Skipped (unreachable)', value: summary.skipped });
+                        }
+
+                        if (summary.renamed > 0) {
+                            rows.push({ label: 'Original files renamed', value: summary.renamed });
+                        }
+
+                        if (summary.migrated > 0) {
+                            rows.push({ label: 'Migrated to own folder', value: summary.migrated });
+                        }
                     }
 
                     if (summary.totalSeries > 0) {
-                        rows.push({ section: 'TV series' });
+                        if (summary.totalMovies > 0) {
+                            rows.push({ section: 'TV series' });
+                        }
+
                         rows.push({ label: 'Total series in library', value: summary.totalSeries });
                         rows.push({ label: 'Series processed', value: summary.seriesScanned });
                         rows.push({ label: 'Already had trailer', value: summary.seriesAlreadyHadTrailer });
@@ -205,6 +227,34 @@
                         if (summary.seriesSkipped > 0) {
                             rows.push({ label: 'Skipped (no folder)', value: summary.seriesSkipped });
                         }
+                    }
+
+                    el.innerHTML = '';
+
+                    var completedDate = new Date(summary.completedAtUtc);
+                    var headerBits = [
+                        completedDate.toLocaleDateString() + ' ' + completedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        formatDuration(summary.durationSeconds)
+                    ];
+                    if (summary.dryRun) {
+                        headerBits.push('dry run');
+                    }
+                    if (summary.aborted) {
+                        headerBits.push('cancelled - partial results');
+                    }
+                    var header = document.createElement('div');
+                    header.textContent = headerBits.join(' · ');
+                    header.style.marginBottom = '0.5em';
+                    if (summary.aborted) {
+                        header.style.fontWeight = 'bold';
+                    }
+                    el.appendChild(header);
+
+                    if (rows.length === 0) {
+                        var emptyMsg = document.createElement('div');
+                        emptyMsg.textContent = 'Nothing was in scope for this run.';
+                        el.appendChild(emptyMsg);
+                        return;
                     }
 
                     // Styled entirely via inline styles rather than a <style> block or
@@ -228,7 +278,6 @@
                         }
                     }
 
-                    el.innerHTML = '';
                     var table = document.createElement('table');
                     table.style.borderCollapse = 'collapse';
                     table.style.width = '100%';

@@ -158,8 +158,13 @@ public class YtDlpClient
 
         if (candidates.Count == 0 && exitCode != 0)
         {
-            var firstError = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
+            var stderrLines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var firstError = stderrLines.FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
             _logger.LogWarning("  > Source {Source} failed ({Error}). Trying next source...", source, firstError ?? $"exit code {exitCode}");
+            foreach (var warningLine in stderrLines.Where(l => l.Contains("WARNING", StringComparison.Ordinal)))
+            {
+                _logger.LogWarning("  > {WarningLine}", warningLine);
+            }
         }
 
         return candidates;
@@ -210,8 +215,21 @@ public class YtDlpClient
 
             if (downloadedFile is null)
             {
-                var firstError = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
+                var stderrLines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                var firstError = stderrLines.FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
                 _logger.LogWarning("  > No file downloaded for {Url} ({Error}).", url, firstError ?? "unknown error");
+
+                // A "no formats" error's real cause is usually in the WARNING lines
+                // right before it (e.g. a client's formats being skipped for lacking a
+                // PO token, or a JS-runtime problem preventing signature deciphering) -
+                // surfacing only the final ERROR line hides exactly the detail needed
+                // to tell "this video genuinely has nothing downloadable" apart from
+                // "something about this server's yt-dlp/deno setup isn't working".
+                foreach (var warningLine in stderrLines.Where(l => l.Contains("WARNING", StringComparison.Ordinal)))
+                {
+                    _logger.LogWarning("  > {WarningLine}", warningLine);
+                }
+
                 return false;
             }
 
