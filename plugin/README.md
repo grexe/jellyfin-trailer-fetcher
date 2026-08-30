@@ -39,6 +39,23 @@ the most iteration to get right (sequel-vs-original confusion, trusting a mismat
 title's own other fields, etc.) - carries over essentially unchanged, just reimplemented
 in C#.
 
+### Why a plain `Process` wrapper, not a yt-dlp .NET library
+
+[`Ytdlp.NET`](https://github.com/manusoft/yt-dlp-wrapper) (a fluent .NET wrapper around
+the yt-dlp CLI) was evaluated and rejected. It has fluent methods for some of what's
+needed (cookies file, `--extractor-args`, `--ffmpeg-location`), but not for
+`--remote-components`/`--js-runtimes` (which YouTube extraction actually depends on
+here) - those still need its raw-command escape hatch. More importantly, its metadata
+extraction is single-URL only; probing a `ytsearch5:` query for up to 5 candidates to
+filter in C# (this plugin's whole match-filter replication strategy - see
+`Services/YtDlpClient.cs`) isn't a built-in feature, so the JSON-lines parsing would
+still need to be hand-written on top of it. Cancellation is also only documented for
+its raw-execution path, not its higher-level download methods, and this task relies on
+the scheduled task's `CancellationToken` actually killing an in-flight yt-dlp process.
+Net: it would have replaced a modest amount of argument-list plumbing while leaving the
+actual custom logic - and its own 18-star, single-maintainer risk profile - in place, so
+the plugin sticks with `System.Diagnostics.Process` directly.
+
 ## Current status
 
 | Area | Status |
