@@ -86,6 +86,7 @@ public class DependencyProvisioner
         var destination = Path.Combine(_binDir, OperatingSystem.IsWindows() ? "deno.exe" : "deno");
         if (File.Exists(destination))
         {
+            await LogDenoVersionAsync(destination, cancellationToken).ConfigureAwait(false);
             return destination;
         }
 
@@ -124,6 +125,7 @@ public class DependencyProvisioner
             Directory.Delete(extractDir, recursive: true);
             MakeExecutable(destination);
             _logger.LogInformation("  > deno downloaded to {Path}.", destination);
+            await LogDenoVersionAsync(destination, cancellationToken).ConfigureAwait(false);
             return destination;
         }
         finally
@@ -165,6 +167,54 @@ public class DependencyProvisioner
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             _logger.LogWarning("  > yt-dlp self-update check failed (non-fatal): {Error}", e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Runs "deno --version" in-process (the same execution context - permissions,
+    /// sandboxing - yt-dlp itself will use to invoke deno later) and logs the result.
+    /// The managed binary existing on disk doesn't prove it actually runs successfully
+    /// from here; this gives a definitive, per-run answer instead of inferring it from
+    /// a downstream "Only images are available for download" symptom that has more
+    /// than one possible cause.
+    /// </summary>
+    private async Task LogDenoVersionAsync(string denoPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(denoPath, "--version")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is null)
+            {
+                _logger.LogWarning("  > Could not start deno to verify it runs.");
+                return;
+            }
+
+            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            if (process.ExitCode == 0)
+            {
+                _logger.LogInformation("  > deno runs successfully: {Version}", stdout.Trim().Replace("\n", " "));
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "  > deno exists but did not run successfully (exit code {ExitCode}): {Error}",
+                    process.ExitCode,
+                    string.IsNullOrWhiteSpace(stderr) ? "(no output)" : stderr.Trim());
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            _logger.LogWarning("  > deno exists but could not be run: {Error}", e.Message);
         }
     }
 

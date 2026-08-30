@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.8.0"
+version: "0.8.9.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,19 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.9.0: Diagnostic-only addition. The previous release's added logging revealed
+  the real yt-dlp error: "WARNING: Only images are available for download" - meaning
+  YouTube served no real video/audio formats at all on that server, only storyboard
+  images, which happens when YouTube enforces SABR-only streaming and the signature
+  challenge solver can't actually run - even when a JS runtime binary is *present* on
+  disk, since that doesn't prove it actually executes successfully from inside
+  Jellyfin's own process (permissions/sandboxing can differ from a manual test).
+  DependencyProvisioner now runs "deno --version" in that same execution context -
+  once after downloading it, and once on every run where it was already present -
+  and logs the result, to get a definitive per-run answer instead of inferring
+  deno's health from a downstream symptom that has more than one possible cause.
+
+
   0.8.8.0: Three fixes from live testing. (1) The "Last run" summary is now
   cancellation-safe: cancelling a run used to skip saving the summary entirely,
   leaving a stale summary from a previous run on display - the movie/series loops

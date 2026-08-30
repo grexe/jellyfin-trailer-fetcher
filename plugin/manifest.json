@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.9.0",
+        "changelog": "Diagnostic-only addition. The previous release's added logging revealed the real yt-dlp error: \"WARNING: Only images are available for download\" - meaning YouTube served no real video/audio formats at all on that server, only storyboard images, which happens when YouTube enforces SABR-only streaming and the signature challenge solver can't actually run - even when a JS runtime binary is present on disk, since that doesn't prove it actually executes successfully from inside Jellyfin's own process (permissions/sandboxing can differ from a manual test). DependencyProvisioner now runs \"deno --version\" in that same execution context - once after downloading it, and once on every run where it was already present - and logs the result, to get a definitive per-run answer instead of inferring deno's health from a downstream symptom that has more than one possible cause.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.9.0.zip",
+        "checksum": "0e413477c4bf3c8abcfee254ea2f7828",
+        "timestamp": "2026-08-30T22:47:27Z"
+      },
+      {
         "version": "0.8.8.0",
         "changelog": "Three fixes from live testing. (1) The \"Last run\" summary is now cancellation-safe: cancelling a run used to skip saving the summary entirely, leaving a stale summary from a previous run on display - the movie/series loops are now wrapped so the summary is always logged/persisted with whatever was found before it stopped (marked \"cancelled - partial results\"), then the cancellation is rethrown so Jellyfin's TaskManager still correctly reports it as cancelled rather than completed. (2) The summary now only shows a Movies or TV Series section for libraries actually in scope for that run, instead of always showing \"Total Movies in Library: 0\" for a run scoped to series-only libraries. (3) Replaced the full ISO \"Completed\" table row with a compact date + time + duration line above the table. Also added diagnostic logging (yt-dlp's WARNING lines, and the resolved yt-dlp/deno paths) to help pin down a reported case where every download failed with \"Requested format is not available\" on one server.",
         "targetAbi": "10.11.0.0",
