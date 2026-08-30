@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.6.0",
+        "changelog": "Fixed a high-impact porting regression in TitleMatching.TitleMatches: the YouTube result title was never lowercased before the phrase-match regex ran against it, while the candidate side always was - and .NET's Regex.Match is case-sensitive by default, so \"blue lock\" (candidate) silently never matched \"Blue Lock\" (a title-cased YouTube title) even though they're the same title. The standalone script avoids this by lowercasing yt_title once at the top of its filter function; the C# port dropped that step. This was very likely the dominant cause behind most search-based \"Title mismatch\" rejections seen throughout testing (movies and series both, not just the two TV cases that surfaced it) - confirmed against the exact failing case (\"Blue Lock - Official Trailer...\" now correctly matches \"Blue Lock\"). Also fixed SeriesTitleCleanup leaving an empty \"( )\" behind when the season-range fragment it removes was fully inside a parenthetical (\"Blue Lock (Season 1)\" -> \"Blue Lock ( )\" -> now \"Blue Lock\").",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.6.0.zip",
+        "checksum": "d5d93a9dc8b65ed7ea4fa103efbb0482",
+        "timestamp": "2026-08-30T22:18:55Z"
+      },
+      {
         "version": "0.8.5.0",
         "changelog": "Fixed wrong search queries for TV series bundled as a multi-season folder (e.g. \"... S1 - S5 [Full Series] ...\"): a season-range fragment (\"S1\", \"S1 - S5\", \"Season 1-5\") was surviving into the resolved title, since nothing in the shared title-cleanup logic knows about season ranges (a movie title never has one) - confirmed live on \"Food Wars! (Shokugeki no Soma)\", whose search queries all carried a spurious \"S1\" because Jellyfin's own matched Name already had it before the plugin ever saw it. Added Services/SeriesTitleCleanup.cs, a small series-only post-processing step (deliberately not folded into the shared ItemMetadata/TitleMatching, since this noise is TV-specific) that strips a season-range fragment from the resolved title/variants before they're used for search or the trailer filename. Verified against the exact failing case plus several variants (Season 1-4, S01-S04) and confirmed it leaves unrelated content alone (e.g. a hypothetical title like \"S1mone\").",
         "targetAbi": "10.11.0.0",

@@ -223,7 +223,12 @@ public static partial class TitleMatching
     /// </summary>
     public static bool TitleMatches(string ytTitle, IEnumerable<string> titleVariants)
     {
-        var normYt = Regex.Replace(NonWordRegex().Replace(ytTitle, " "), @"\s+", " ").Trim();
+        // Both sides of the phrase match below must be lowercase - normCand already is
+        // (derived from candLower), but ytTitle itself is whatever case YouTube gave it
+        // (almost always title-case), and Regex.Match is case-sensitive by default. The
+        // standalone script avoids this by lowercasing yt_title once at the very top of
+        // its filter function, before anything derived from it gets used.
+        var normYt = Regex.Replace(NonWordRegex().Replace(ytTitle.ToLowerInvariant(), " "), @"\s+", " ").Trim();
 
         foreach (var tv in titleVariants)
         {

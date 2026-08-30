@@ -23,10 +23,18 @@ public static partial class SeriesTitleCleanup
     [GeneratedRegex(@"\b(?:seasons?\s+\d{1,2}(?:\s*[-–—]\s*\d{1,2})?|s\d{1,2}(?:\s*[-–—]\s*s?\d{1,2})?)\b", RegexOptions.IgnoreCase)]
     private static partial Regex SeasonRangeRegex();
 
-    /// <summary>Removes a season-range fragment (if any) and collapses the resulting whitespace.</summary>
+    /// <summary>
+    /// Removes a season-range fragment (if any), along with the parenthetical/bracket
+    /// pair it can leave empty behind ("Blue Lock (Season 1)" -&gt; "Blue Lock ( )" if
+    /// only the inner text were removed) and any stray dangling separator, then
+    /// collapses whitespace.
+    /// </summary>
     public static string StripSeasonRange(string title)
     {
         var cleaned = SeasonRangeRegex().Replace(title, " ");
+        cleaned = Regex.Replace(cleaned, @"\(\s*\)|\[\s*\]", " ");
+        cleaned = Regex.Replace(cleaned, @"\s*-\s*$", string.Empty);
+        cleaned = Regex.Replace(cleaned, @"^\s*-\s*", string.Empty);
         return Regex.Replace(cleaned, @"\s+", " ").Trim();
     }
 }
