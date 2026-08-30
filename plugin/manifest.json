@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.6.0.0",
+        "changelog": "yt-dlp and the deno JavaScript runtime it needs no longer have to be installed on the server - the plugin now downloads and manages both itself (Services/DependencyProvisioner.cs), verifying checksums and self-updating yt-dlp every 24h, so it works on a stock jellyfin/jellyfin container with no customization. The 'yt-dlp executable' setting is now empty by default (auto-managed) instead of defaulting to \"yt-dlp\"; set it to a specific command/path to opt back out and use your own installation instead. Evaluated and rejected two alternatives (documented in the README): the Ytdlp.NET fluent wrapper package (still needs the same underlying binary, and its metadata API is single-URL only - doesn't support this plugin's multi-candidate probe-then-filter strategy) and MeTube (a second container/service with no metadata-only probe API and a separate cookie config).",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.6.0.0.zip",
+        "checksum": "2251d403d1fbcf88b1f10740258424f1",
+        "timestamp": "2026-08-30T19:27:03Z"
+      },
+      {
         "version": "0.5.0.0",
         "changelog": "Ported the standalone script's actual trailer fetching: title/year resolution, multi-stage YouTube search query building, duration+title/keyword candidate filtering, original-file renaming, and folder migration all now run for real (FetchTrailersTask was previously a wiring stub that only counted movies). Runs entirely in-process against ILibraryManager - no NAS path mapping, no HTTP calls to Jellyfin's own API, no browser cookie jar (uses the uploaded cookies.txt), library scans triggered via ILibraryManager.QueueLibraryScan() directly. Shells out to a yt-dlp executable (new 'yt-dlp executable' setting, default \"yt-dlp\" on PATH) for the actual YouTube search/download, since there's no C# equivalent - REQUIRES yt-dlp (and a JS runtime, deno or node) to be installed wherever the Jellyfin server process itself runs; ffmpeg is reused from Jellyfin's own configured encoder, no separate install needed. See the README's new Requirements section.",
         "targetAbi": "10.11.0.0",

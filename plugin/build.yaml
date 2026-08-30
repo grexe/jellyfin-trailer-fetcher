@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.5.0.0"
+version: "0.6.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,19 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.6.0.0: yt-dlp and the deno JavaScript runtime it needs no longer have to be
+  installed on the server - the plugin now downloads and manages both itself
+  (Services/DependencyProvisioner.cs), verifying checksums and self-updating yt-dlp
+  every 24h, so it works on a stock jellyfin/jellyfin container with no customization.
+  The "yt-dlp executable" setting is now empty by default (auto-managed) instead of
+  defaulting to "yt-dlp"; set it to a specific command/path to opt back out and use
+  your own installation instead. Evaluated and rejected two alternatives (documented
+  in the README): the Ytdlp.NET fluent wrapper package (still needs the same
+  underlying binary, and its metadata API is single-URL only - doesn't support this
+  plugin's multi-candidate probe-then-filter strategy) and MeTube (a second
+  container/service with no metadata-only probe API and a separate cookie config).
+
+
   0.5.0.0: Ported the standalone script's actual trailer fetching: title/year
   resolution, multi-stage YouTube search query building, duration+title/keyword
   candidate filtering, original-file renaming, and folder migration all now run for

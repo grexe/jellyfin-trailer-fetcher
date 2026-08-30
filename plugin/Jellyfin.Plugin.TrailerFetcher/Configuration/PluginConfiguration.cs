@@ -47,7 +47,7 @@ public class PluginConfiguration : BasePluginConfiguration
         CookiesFilePath = string.Empty;
         MaxTrailerDurationSeconds = 300;
         LibraryIds = Array.Empty<string>();
-        YtDlpPath = "yt-dlp";
+        YtDlpPath = string.Empty;
     }
 
     /// <summary>
@@ -99,10 +99,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public string[] LibraryIds { get; set; }
 
     /// <summary>
-    /// Gets or sets the yt-dlp executable to invoke - either a bare command resolved via
-    /// the server process's PATH (the default, "yt-dlp"), or an absolute path. yt-dlp
-    /// itself is not bundled with the plugin and must be installed wherever the Jellyfin
-    /// server process actually runs (e.g. baked into a custom container image).
+    /// Gets or sets the yt-dlp executable to invoke. Left empty (the default), the
+    /// plugin downloads and manages its own copy of yt-dlp - and the deno JavaScript
+    /// runtime it needs for YouTube's player challenges - in its data folder,
+    /// self-updating yt-dlp periodically; no server/container customization needed. Set
+    /// to a bare command (resolved via the server process's PATH) or an absolute path to
+    /// use a specific yt-dlp installation instead, unmanaged.
     /// </summary>
     public string YtDlpPath { get; set; }
 }

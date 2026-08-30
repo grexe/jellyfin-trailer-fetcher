@@ -82,12 +82,14 @@
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">yt-dlp executable</label>
-                        <input id="YtDlpPath" name="YtDlpPath" type="text" is="emby-input" value="yt-dlp" />
+                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">yt-dlp executable (advanced)</label>
+                        <input id="YtDlpPath" name="YtDlpPath" type="text" is="emby-input" placeholder="leave empty to auto-manage" />
                         <div class="fieldDescription">
-                            Command or absolute path used to invoke yt-dlp. yt-dlp is not bundled with this plugin - it must
-                            be installed wherever the Jellyfin server process itself runs (e.g. baked into a custom container
-                            image), not just on this browser's machine. Leave as "yt-dlp" if it's on the server process's PATH.
+                            Leave empty (recommended) and the plugin downloads and manages its own yt-dlp - and the deno
+                            JavaScript runtime it needs for YouTube's player challenges - automatically, keeping yt-dlp
+                            updated on its own. No server or container customization needed. Only set this if you'd rather
+                            use your own yt-dlp installation instead: a bare command resolved via the server process's PATH,
+                            or an absolute path.
                         </div>
                     </div>
 

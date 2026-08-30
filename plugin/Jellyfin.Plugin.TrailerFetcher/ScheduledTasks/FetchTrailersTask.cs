@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -31,6 +32,7 @@ public class FetchTrailersTask : IScheduledTask
     private readonly ILibraryManager _libraryManager;
     private readonly ILocalizationManager _localization;
     private readonly IMediaEncoder _mediaEncoder;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<FetchTrailersTask> _logger;
 
     /// <summary>
@@ -39,12 +41,14 @@ public class FetchTrailersTask : IScheduledTask
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="localization">Instance of the <see cref="ILocalizationManager"/> interface.</param>
     /// <param name="mediaEncoder">Instance of the <see cref="IMediaEncoder"/> interface, used to point yt-dlp at Jellyfin's own ffmpeg.</param>
+    /// <param name="httpClientFactory">Instance of the <see cref="IHttpClientFactory"/> interface, used to download managed yt-dlp/deno binaries.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{FetchTrailersTask}"/> interface.</param>
-    public FetchTrailersTask(ILibraryManager libraryManager, ILocalizationManager localization, IMediaEncoder mediaEncoder, ILogger<FetchTrailersTask> logger)
+    public FetchTrailersTask(ILibraryManager libraryManager, ILocalizationManager localization, IMediaEncoder mediaEncoder, IHttpClientFactory httpClientFactory, ILogger<FetchTrailersTask> logger)
     {
         _libraryManager = libraryManager;
         _localization = localization;
         _mediaEncoder = mediaEncoder;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -93,7 +97,7 @@ public class FetchTrailersTask : IScheduledTask
             // EncoderPath not configured yet; yt-dlp falls back to its own bundled/PATH ffmpeg.
         }
 
-        var ytDlp = new YtDlpClient(config, ffmpegDir, _logger);
+        var ytDlp = await BuildYtDlpClientAsync(config, ffmpegDir, cancellationToken).ConfigureAwait(false);
         var stats = new TrailerFetchStats();
 
         for (var i = 0; i < movies.Count; i++)
@@ -122,6 +126,40 @@ public class FetchTrailersTask : IScheduledTask
                 _logger.LogInformation("No new trailers or migrations; skipping Jellyfin library scan.");
             }
         }
+    }
+
+    /// <summary>
+    /// Resolves which yt-dlp (and, if managed, deno) executables to use. When
+    /// <see cref="PluginConfiguration.YtDlpPath"/> is left empty, downloads and manages
+    /// its own copies via <see cref="DependencyProvisioner"/> - so the plugin works
+    /// without any server/container customization - self-updating yt-dlp periodically.
+    /// A dry run never actually invokes yt-dlp (see ProcessMovieAsync), so provisioning
+    /// is skipped entirely then, keeping dry-run free of side effects and instant.
+    /// </summary>
+    private async Task<YtDlpClient> BuildYtDlpClientAsync(PluginConfiguration config, string? ffmpegDir, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(config.YtDlpPath))
+        {
+            return new YtDlpClient(config.YtDlpPath, denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
+        }
+
+        if (config.DryRun)
+        {
+            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
+        }
+
+        var provisioner = new DependencyProvisioner(_httpClientFactory, Plugin.Instance!.DataFolderPath, _logger);
+        var managedYtDlp = await provisioner.EnsureYtDlpAsync(cancellationToken).ConfigureAwait(false);
+        if (managedYtDlp is null)
+        {
+            _logger.LogError(
+                "Could not automatically provision yt-dlp; no trailers can be fetched this run. " +
+                "Set a specific \"yt-dlp executable\" in settings to use your own installation instead.");
+            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
+        }
+
+        var managedDeno = await provisioner.EnsureDenoAsync(cancellationToken).ConfigureAwait(false);
+        return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, _logger);
     }
 
     private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)

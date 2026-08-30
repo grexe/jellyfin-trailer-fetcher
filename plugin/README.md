@@ -64,26 +64,47 @@ the plugin sticks with `System.Diagnostics.Process` directly.
 | Cookie file upload | ✅ Working |
 | Per-library scan scoping | ✅ Working |
 | Dedicated log file | ✅ Working |
-| Trailer search/filter/download | ✅ Working (requires yt-dlp on the server - see Requirements) |
+| Trailer search/filter/download | ✅ Working - no container customization needed, see Requirements |
 | Folder migration & rename | ✅ Working |
 
 ## Requirements
 
-`FetchTrailersTask` shells out to a `yt-dlp` executable (configurable path/command,
-default `yt-dlp` resolved via `PATH`) rather than reimplementing YouTube extraction in
-C# - the same tool the standalone script uses, just invoked as a subprocess instead of
-through its Python API (there's no C# equivalent, and match filtering is replicated by
-probing candidates with `--dump-json` before downloading the one that passes). This
-means **yt-dlp must be installed wherever the Jellyfin *server process* itself runs**,
-not just on the machine you use to administer it - for a Docker/TrueNAS SCALE install,
-that's inside the container, which typically means baking it into a custom image built
-`FROM jellyfin/jellyfin` (or your image of choice). yt-dlp also needs a JS runtime
-(`deno` or `node`) on the same `PATH` to solve YouTube's player challenges. ffmpeg does
-*not* need a separate install - the plugin points yt-dlp at Jellyfin's own configured
-ffmpeg binary (`IMediaEncoder.EncoderPath`) for muxing.
+`FetchTrailersTask` shells out to a `yt-dlp` executable rather than reimplementing
+YouTube extraction in C# - the same tool the standalone script uses, just invoked as a
+subprocess instead of through its Python API (there's no C# equivalent, and match
+filtering is replicated by probing candidates with `--dump-json` before downloading the
+one that passes). yt-dlp also needs a JS runtime (`deno`) to solve YouTube's player
+challenges.
 
-If yt-dlp isn't found, the plugin logs a clear error per attempted download rather than
-failing silently - check `trailer-fetcher.log` (see Logging below).
+**Neither needs to be installed on the server.** By default (the "yt-dlp executable"
+setting left empty) `Services/DependencyProvisioner.cs` downloads both directly from
+their own GitHub releases into the plugin's data folder the first time they're needed,
+verifies each download's checksum, and self-updates yt-dlp (via its own `-U`) at most
+once every 24 hours - yt-dlp needs frequent updates to keep working against YouTube's
+changes, which is also why neither is bundled inside the plugin's own release zip (a
+copy frozen at plugin-release time would go stale in weeks). This requires outbound
+internet access from wherever the Jellyfin server process runs, which it already needs
+anyway to reach YouTube itself. ffmpeg does *not* get this treatment - the plugin points
+yt-dlp at Jellyfin's own configured ffmpeg binary (`IMediaEncoder.EncoderPath`) instead.
+
+Setting "yt-dlp executable" to a specific command/path opts back out of all of this and
+uses that installation directly (unmanaged, no self-update) - useful if you already run
+yt-dlp elsewhere on the same host/container. If auto-provisioning fails (e.g. no
+internet egress) or a manually configured executable isn't found, the plugin logs a
+clear error per attempted download rather than failing silently - check
+`trailer-fetcher.log` (see Logging below).
+
+### Evaluated and rejected: MeTube
+
+[MeTube](https://github.com/alexta69/metube) (a yt-dlp web UI/API, run as its own
+container) was also considered as an alternative to a local yt-dlp. Rejected: it's a
+download-only API with no equivalent of a metadata-only probe (`--dump-json` without
+downloading), which this plugin's candidate filtering depends on - replicating that
+would mean reverse-engineering a second, unofficial API surface instead of just calling
+yt-dlp directly. It would also mean deploying and networking a second container, mapping
+its downloads folder onto the same volume as the media library, and configuring cookies
+separately from this plugin's own cookie upload - real setup friction for what the
+self-managed-binary approach above already solves with zero extra services.
 
 ## Installing for testing
 

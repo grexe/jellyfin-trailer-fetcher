@@ -7,7 +7,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Plugin.TrailerFetcher.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.TrailerFetcher.Services;
@@ -32,19 +31,25 @@ public record YtDlpCandidate(string Title, double? DurationSeconds, string Webpa
 /// </summary>
 public class YtDlpClient
 {
-    private readonly PluginConfiguration _config;
+    private readonly string _ytDlpExecutable;
+    private readonly string? _denoPath;
+    private readonly string? _cookiesFilePath;
     private readonly string? _ffmpegDir;
     private readonly ILogger _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="YtDlpClient"/> class.
     /// </summary>
-    /// <param name="config">The plugin configuration (yt-dlp path, cookies file).</param>
+    /// <param name="ytDlpExecutable">The resolved yt-dlp command or path to invoke (managed, or the admin's own override).</param>
+    /// <param name="denoPath">Path to a managed deno executable, if one was provisioned; null to fall back to a bare "deno"/"node" PATH lookup.</param>
+    /// <param name="cookiesFilePath">Path to a Netscape-format cookies.txt, if configured.</param>
     /// <param name="ffmpegDir">Directory containing Jellyfin's own ffmpeg binary, reused by yt-dlp for muxing.</param>
     /// <param name="logger">Instance of the <see cref="ILogger"/> interface.</param>
-    public YtDlpClient(PluginConfiguration config, string? ffmpegDir, ILogger logger)
+    public YtDlpClient(string ytDlpExecutable, string? denoPath, string? cookiesFilePath, string? ffmpegDir, ILogger logger)
     {
-        _config = config;
+        _ytDlpExecutable = ytDlpExecutable;
+        _denoPath = denoPath;
+        _cookiesFilePath = cookiesFilePath;
         _ffmpegDir = ffmpegDir;
         _logger = logger;
     }
@@ -58,15 +63,29 @@ public class YtDlpClient
             "--no-check-certificates",
             "--geo-bypass",
             "--socket-timeout", "15",
-            "--remote-components", "ejs:github",
-            "--js-runtimes", "deno",
-            "--js-runtimes", "node"
+            "--remote-components", "ejs:github"
         };
+
+        // A managed deno's exact path is passed explicitly so it works regardless of
+        // PATH; otherwise fall back to a bare PATH lookup (deno first, node as a
+        // secondary fallback) in case the admin installed one manually.
+        if (!string.IsNullOrEmpty(_denoPath))
+        {
+            args.Add("--js-runtimes");
+            args.Add($"deno:{_denoPath}");
+        }
+        else
+        {
+            args.Add("--js-runtimes");
+            args.Add("deno");
+            args.Add("--js-runtimes");
+            args.Add("node");
+        }
 
         // Only web-family clients honor cookies for authenticated/age-restricted access;
         // android/ios don't support cookies at all. Keep them as fallbacks only when
         // there are no cookies to use.
-        var hasCookies = !string.IsNullOrEmpty(_config.CookiesFilePath) && File.Exists(_config.CookiesFilePath);
+        var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
         var playerClients = hasCookies ? "web" : "web,android,ios";
         args.Add("--extractor-args");
         args.Add($"youtube:player_client={playerClients}");
@@ -74,7 +93,7 @@ public class YtDlpClient
         if (hasCookies)
         {
             args.Add("--cookies");
-            args.Add(_config.CookiesFilePath);
+            args.Add(_cookiesFilePath!);
         }
 
         if (!string.IsNullOrEmpty(_ffmpegDir))
@@ -219,7 +238,7 @@ public class YtDlpClient
     {
         var psi = new ProcessStartInfo
         {
-            FileName = _config.YtDlpPath,
+            FileName = _ytDlpExecutable,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -244,7 +263,7 @@ public class YtDlpClient
         {
             _logger.LogError(
                 "  > Could not launch yt-dlp ('{Path}'): {Error}. Is yt-dlp installed and on the server process's PATH?",
-                _config.YtDlpPath,
+                _ytDlpExecutable,
                 e.Message);
             return (-1, string.Empty, string.Empty);
         }
