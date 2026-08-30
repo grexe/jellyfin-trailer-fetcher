@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.3.0.0"
+version: "0.3.1.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,13 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.3.1.0: Clearer cookies-file guidance on the settings page - no browser exposes a
+  plain "cookies.txt" to point to (Firefox stores cookies in an SQLite database, not
+  a text file); names the actual export extension needed ("Get cookies.txt LOCALLY").
+  Also fixed the catalog logo being cropped (padded the artwork so a wider-than-tall
+  crop doesn't clip it) and replaced it with a solid-background badge.
+
+
   0.3.0.0: Retargeted to Jellyfin 10.11.x (net9.0; 10.11.x's packages dropped net8.0
   support) - TaskTriggerInfo.Type is now the TaskTriggerInfoType enum instead of a
   string constant. No functional change otherwise.

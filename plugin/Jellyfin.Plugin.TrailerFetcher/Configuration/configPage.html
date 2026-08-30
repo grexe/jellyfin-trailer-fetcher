@@ -64,9 +64,14 @@
                             <span>Remove cookies file</span>
                         </button>
                         <div class="fieldDescription">
-                            A Netscape-format cookies.txt file (exported from a signed-in, age-verified YouTube account via a
-                            browser extension such as "Get cookies.txt"), used by yt-dlp for authenticated/age-restricted access.
-                            Uploaded to the server and saved immediately - it is not part of the Save button below.
+                            Used by yt-dlp for authenticated/age-restricted YouTube access. No browser (Firefox, Chrome,
+                            Safari, ...) stores cookies as a plain file you can point to directly - Firefox keeps them in an
+                            SQLite database inside its profile folder, not a "cookies.txt". Export one instead: install the
+                            <a is="emby-linkbutton" class="button-link" href="https://addons.mozilla.org/firefox/addon/get-cookies-txt-locally/" target="_blank" rel="noopener noreferrer">"Get cookies.txt LOCALLY"</a>
+                            extension (also on the Chrome Web Store; avoid the plain "Get cookies.txt" one, it was pulled as
+                            malware), sign in to a YouTube account that's passed age verification, open youtube.com, and use
+                            the extension to export the current site's cookies as a Netscape-format cookies.txt - then upload
+                            that file here. Saved immediately on upload - not part of the Save button below.
                         </div>
                     </div>
 

@@ -9,12 +9,12 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
-        "version": "0.3.0.0",
-        "changelog": "Retargeted to Jellyfin 10.11.x (net9.0; 10.11.x's packages dropped net8.0 support) - TaskTriggerInfo.Type is now the TaskTriggerInfoType enum instead of a string constant. No functional change otherwise.",
+        "version": "0.3.1.0",
+        "changelog": "Clearer cookies-file guidance on the settings page - no browser exposes a plain \"cookies.txt\" to point to (Firefox stores cookies in an SQLite database, not a text file); names the actual export extension needed (\"Get cookies.txt LOCALLY\"). Also fixed the catalog logo being cropped and replaced it with a solid-background badge.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.3.0.0.zip",
-        "checksum": "9838cea58bb826efb3e9c83ff61634f4",
-        "timestamp": "2026-08-30T12:11:40Z"
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.3.1.0.zip",
+        "checksum": "cbd1d8baadd22a32154cdc774560d27d",
+        "timestamp": "2026-08-30T12:50:14Z"
       }
     ]
   }
