@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.3.2.0"
+version: "0.4.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,20 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.4.0.0: Fixed a real stability bug: the compiled assembly never had its own
+  <Version>/<AssemblyVersion> set, so it silently defaulted to .NET's "1.0.0.0"
+  regardless of what build.yaml/manifest.json declared. That mismatch between the
+  assembly's actual version and what Jellyfin installed/tracked caused the dashboard
+  to revert to "1.0.0.0" after a task run or server restart, and made uninstall fail
+  outright. package.sh now keeps build.yaml's version in sync with the csproj
+  automatically, so this can't drift again. Also: moved the scheduled task into the
+  "Library" category (no need for its own single-entry category), fixed a stray
+  quoted-string artifact in one log line ("librar\"y\"" -> "library"), and added
+  diagnostic logging (every known library's id/name/collection-type, plus an
+  unscoped movie count for comparison) to help track down a reported "0 movies
+  found" when scoped to a specific library - not yet reproduced locally.
+
+
   0.3.2.0: This plugin's own log entries (scheduled task runs, cookie upload/removal,
   etc.) now also get mirrored into their own file
   (plugins/Jellyfin.Plugin.TrailerFetcher/trailer-fetcher.log) via a scoped

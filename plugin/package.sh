@@ -14,6 +14,14 @@ if [ -z "$VERSION" ]; then
 fi
 TARGET_ABI="$(grep -m1 '^targetAbi:' build.yaml | sed -E 's/targetAbi: *"(.*)"/\1/')"
 
+# Keep build.yaml's version in sync with the csproj automatically - the csproj's
+# <Version> is what actually ends up baked into the compiled assembly (what Jellyfin
+# reports/tracks for an installed plugin), so it must be the single source of truth.
+# A drift here previously left the assembly at .NET's default "1.0.0.0" while
+# build.yaml/manifest.json said otherwise, which caused real instability (dashboard
+# reverting to "1.0.0.0" after a task run or restart, and uninstall failing outright).
+sed -i.bak -E "s/^version: \".*\"/version: \"$VERSION\"/" build.yaml && rm -f build.yaml.bak
+
 echo "Packaging version $VERSION..."
 
 # Clean rebuild - dotnet's incremental build can otherwise skip recompiling on rapid

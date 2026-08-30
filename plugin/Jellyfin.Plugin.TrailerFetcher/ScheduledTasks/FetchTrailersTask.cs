@@ -46,7 +46,9 @@ public class FetchTrailersTask : IScheduledTask
     public string Description => "Downloads missing local movie trailers from YouTube via yt-dlp.";
 
     /// <inheritdoc />
-    public string Category => "Trailer Fetcher";
+    // "Library" rather than a dedicated "Trailer Fetcher" category - no need for a
+    // whole extra category grouping in the Scheduled Tasks page for a single task.
+    public string Category => "Library";
 
     /// <inheritdoc />
     public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
@@ -60,6 +62,20 @@ public class FetchTrailersTask : IScheduledTask
             config.DryRun,
             config.TriggerLibraryScan);
 
+        // Diagnostic: list every library the server knows about, with the exact id
+        // TopParentIds scoping below needs. Temporary - here to pin down a reported
+        // "0 movies found" against a library known to contain real movie files, which
+        // hasn't been reproduced locally (no live server to test against).
+        var allLibraries = _libraryManager.GetVirtualFolders();
+        foreach (var lib in allLibraries)
+        {
+            _logger.LogInformation(
+                "Known library: Name={Name}, ItemId={ItemId}, CollectionType={CollectionType}",
+                lib.Name,
+                lib.ItemId,
+                lib.CollectionType?.ToString() ?? "(none)");
+        }
+
         var query = new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie },
@@ -68,6 +84,7 @@ public class FetchTrailersTask : IScheduledTask
         };
 
         var libraryIds = config.LibraryIds ?? Array.Empty<string>();
+        var scopedToLibraries = false;
         if (libraryIds.Length > 0)
         {
             var parsedIds = new List<Guid>();
@@ -86,7 +103,9 @@ public class FetchTrailersTask : IScheduledTask
             if (parsedIds.Count > 0)
             {
                 query.TopParentIds = parsedIds.ToArray();
-                _logger.LogInformation("Scanning {Count} selected librar{Suffix} only.", parsedIds.Count, parsedIds.Count == 1 ? "y" : "ies");
+                scopedToLibraries = true;
+                var libraryWord = parsedIds.Count == 1 ? "library" : "libraries";
+                _logger.LogInformation($"Scanning {parsedIds.Count} selected {libraryWord} only: [{string.Join(", ", parsedIds)}]");
             }
         }
         else
@@ -96,6 +115,24 @@ public class FetchTrailersTask : IScheduledTask
 
         var movies = _libraryManager.GetItemList(query);
         _logger.LogInformation("Found {Count} movie(s) to process.", movies.Count);
+
+        // Diagnostic: if a library scope was configured but found nothing, check
+        // whether that's a scoping problem (TopParentIds not matching) or a
+        // classification problem (nothing in that library is BaseItemKind.Movie at
+        // all) by re-running without the library scope and without IsVirtualItem.
+        if (scopedToLibraries && movies.Count == 0)
+        {
+            var unscopedCount = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Movie },
+                Recursive = true
+            }).Count;
+            _logger.LogInformation(
+                "Diagnostic: {UnscopedCount} movie(s) found server-wide (no library scope, no IsVirtualItem filter) - " +
+                "if this is also 0, the library likely isn't classified as containing Movie items; if it's > 0, " +
+                "the library scope (TopParentIds) is likely not matching this library's items.",
+                unscopedCount);
+        }
 
         progress.Report(100);
         return Task.CompletedTask;
