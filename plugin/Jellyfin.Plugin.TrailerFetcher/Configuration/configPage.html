@@ -81,6 +81,16 @@
                         <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">yt-dlp executable</label>
+                        <input id="YtDlpPath" name="YtDlpPath" type="text" is="emby-input" value="yt-dlp" />
+                        <div class="fieldDescription">
+                            Command or absolute path used to invoke yt-dlp. yt-dlp is not bundled with this plugin - it must
+                            be installed wherever the Jellyfin server process itself runs (e.g. baked into a custom container
+                            image), not just on this browser's machine. Leave as "yt-dlp" if it's on the server process's PATH.
+                        </div>
+                    </div>
+
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -161,6 +171,7 @@
                         document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
                         document.querySelector('#DryRun').checked = config.DryRun;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
+                        document.querySelector('#YtDlpPath').value = config.YtDlpPath;
                         updateCookiesStatus(config.CookiesFilePath);
                         loadLibraries(config.LibraryIds || []);
                         Dashboard.hideLoadingMsg();
@@ -231,6 +242,7 @@
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
+                        config.YtDlpPath = document.querySelector('#YtDlpPath').value;
                         config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
                             return el.value;
                         });

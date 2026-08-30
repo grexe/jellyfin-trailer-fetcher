@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.4.2.0"
+version: "0.5.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,20 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.5.0.0: Ported the standalone script's actual trailer fetching: title/year
+  resolution, multi-stage YouTube search query building, duration+title/keyword
+  candidate filtering, original-file renaming, and folder migration all now run for
+  real (FetchTrailersTask was previously a wiring stub that only counted movies).
+  Runs entirely in-process against ILibraryManager - no NAS path mapping, no HTTP
+  calls to Jellyfin's own API, no browser cookie jar (uses the uploaded cookies.txt),
+  library scans triggered via ILibraryManager.QueueLibraryScan() directly. Shells out
+  to a yt-dlp executable (new "yt-dlp executable" setting, default "yt-dlp" on PATH)
+  for the actual YouTube search/download, since there's no C# equivalent - REQUIRES
+  yt-dlp (and a JS runtime, deno or node) to be installed wherever the Jellyfin server
+  process itself runs; ffmpeg is reused from Jellyfin's own configured encoder, no
+  separate install needed. See the README's new Requirements section.
+
+
   0.4.2.0: Fixed the scheduled task showing up in its own untranslated "Library"
   group instead of joining the real Library group on non-English servers. The
   task's Category was the literal string "Library", but built-in library tasks

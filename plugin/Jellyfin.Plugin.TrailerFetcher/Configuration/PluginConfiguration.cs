@@ -47,6 +47,7 @@ public class PluginConfiguration : BasePluginConfiguration
         CookiesFilePath = string.Empty;
         MaxTrailerDurationSeconds = 300;
         LibraryIds = Array.Empty<string>();
+        YtDlpPath = "yt-dlp";
     }
 
     /// <summary>
@@ -96,4 +97,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// An empty array means every library is scanned.
     /// </summary>
     public string[] LibraryIds { get; set; }
+
+    /// <summary>
+    /// Gets or sets the yt-dlp executable to invoke - either a bare command resolved via
+    /// the server process's PATH (the default, "yt-dlp"), or an absolute path. yt-dlp
+    /// itself is not bundled with the plugin and must be installed wherever the Jellyfin
+    /// server process actually runs (e.g. baked into a custom container image).
+    /// </summary>
+    public string YtDlpPath { get; set; }
 }

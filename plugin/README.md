@@ -47,11 +47,26 @@ in C#.
 | Cookie file upload | ✅ Working |
 | Per-library scan scoping | ✅ Working |
 | Dedicated log file | ✅ Working |
-| Trailer search/filter/download | ⏳ Not ported yet |
-| Folder migration & rename | ⏳ Not ported yet |
+| Trailer search/filter/download | ✅ Working (requires yt-dlp on the server - see Requirements) |
+| Folder migration & rename | ✅ Working |
 
-`FetchTrailersTask` currently only enumerates the configured scope and logs what it
-*would* do - installing this build will not download any trailers yet.
+## Requirements
+
+`FetchTrailersTask` shells out to a `yt-dlp` executable (configurable path/command,
+default `yt-dlp` resolved via `PATH`) rather than reimplementing YouTube extraction in
+C# - the same tool the standalone script uses, just invoked as a subprocess instead of
+through its Python API (there's no C# equivalent, and match filtering is replicated by
+probing candidates with `--dump-json` before downloading the one that passes). This
+means **yt-dlp must be installed wherever the Jellyfin *server process* itself runs**,
+not just on the machine you use to administer it - for a Docker/TrueNAS SCALE install,
+that's inside the container, which typically means baking it into a custom image built
+`FROM jellyfin/jellyfin` (or your image of choice). yt-dlp also needs a JS runtime
+(`deno` or `node`) on the same `PATH` to solve YouTube's player challenges. ffmpeg does
+*not* need a separate install - the plugin points yt-dlp at Jellyfin's own configured
+ffmpeg binary (`IMediaEncoder.EncoderPath`) for muxing.
+
+If yt-dlp isn't found, the plugin logs a clear error per attempted download rather than
+failing silently - check `trailer-fetcher.log` (see Logging below).
 
 ## Installing for testing
 
@@ -100,7 +115,8 @@ plugin. Once this stabilizes, switch the repository URL to a tagged release inst
 The settings page lists every configured Jellyfin library (fetched live via
 `GET /TrailerFetcher/Libraries`, backed by `ILibraryManager.GetVirtualFolders()`).
 Leave all unchecked to scan every library; check specific ones to scope
-`FetchTrailersTask`'s query to just those (`InternalItemsQuery.TopParentIds`).
+`FetchTrailersTask`'s query to just those (`InternalItemsQuery.Parent`, one query per
+selected library).
 
 ## Logging
 
