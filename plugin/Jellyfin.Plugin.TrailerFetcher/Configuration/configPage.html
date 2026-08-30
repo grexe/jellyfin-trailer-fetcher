@@ -3,37 +3,6 @@
 <head>
     <meta charset="utf-8">
     <title>Trailer Fetcher</title>
-    <style>
-        #LastRunSummary table.trailerFetcherSummaryTable {
-            border-collapse: collapse;
-            width: 100%;
-            max-width: 32em;
-        }
-
-        #LastRunSummary table.trailerFetcherSummaryTable th,
-        #LastRunSummary table.trailerFetcherSummaryTable td {
-            padding: 0.4em 0.8em 0.4em 0;
-            text-align: left;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-        }
-
-        #LastRunSummary table.trailerFetcherSummaryTable thead th {
-            font-weight: bold;
-            border-bottom: 2px solid rgba(128, 128, 128, 0.45);
-        }
-
-        #LastRunSummary table.trailerFetcherSummaryTable td:last-child,
-        #LastRunSummary table.trailerFetcherSummaryTable th:last-child {
-            text-align: right;
-            padding-right: 0;
-        }
-
-        #LastRunSummary table.trailerFetcherSummaryTable tr.trailerFetcherSummarySection td {
-            padding-top: 1em;
-            font-weight: bold;
-            border-bottom: 2px solid rgba(128, 128, 128, 0.45);
-        }
-    </style>
 </head>
 <body>
     <div id="TrailerFetcherConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
@@ -238,15 +207,39 @@
                         }
                     }
 
+                    // Styled entirely via inline styles rather than a <style> block or
+                    // CSS classes: Jellyfin's dashboard loads a plugin's config page by
+                    // extracting/injecting its body content into the existing app shell,
+                    // which drops the page's own <head> (and anything in it) along the
+                    // way - a <style> block there silently never applied.
+                    var borderColor = 'rgba(128, 128, 128, 0.25)';
+                    var sectionBorderColor = 'rgba(128, 128, 128, 0.45)';
+
+                    function styleCell(cellEl, opts) {
+                        opts = opts || {};
+                        cellEl.style.padding = '0.4em 0.8em 0.4em 0';
+                        cellEl.style.textAlign = opts.align || 'left';
+                        cellEl.style.borderBottom = (opts.thick ? '2px solid ' + sectionBorderColor : '1px solid ' + borderColor);
+                        if (opts.bold) {
+                            cellEl.style.fontWeight = 'bold';
+                        }
+                        if (opts.topGap) {
+                            cellEl.style.paddingTop = '1em';
+                        }
+                    }
+
                     el.innerHTML = '';
                     var table = document.createElement('table');
-                    table.className = 'trailerFetcherSummaryTable';
+                    table.style.borderCollapse = 'collapse';
+                    table.style.width = '100%';
+                    table.style.maxWidth = '32em';
 
                     var thead = document.createElement('thead');
                     var headRow = document.createElement('tr');
-                    ['Metric', 'Value'].forEach(function (text) {
+                    ['Metric', 'Value'].forEach(function (text, i) {
                         var th = document.createElement('th');
                         th.textContent = text;
+                        styleCell(th, { align: i === 0 ? 'left' : 'right', bold: true, thick: true });
                         headRow.appendChild(th);
                     });
                     thead.appendChild(headRow);
@@ -256,16 +249,19 @@
                     rows.forEach(function (row) {
                         var tr = document.createElement('tr');
                         if (row.section) {
-                            tr.className = 'trailerFetcherSummarySection';
                             var sectionCell = document.createElement('td');
                             sectionCell.colSpan = 2;
                             sectionCell.textContent = row.section;
+                            styleCell(sectionCell, { bold: true, thick: true, topGap: true });
                             tr.appendChild(sectionCell);
                         } else {
                             var labelCell = document.createElement('td');
                             labelCell.textContent = row.label;
+                            styleCell(labelCell);
                             var valueCell = document.createElement('td');
                             valueCell.textContent = String(row.value);
+                            styleCell(valueCell, { align: 'right' });
+                            valueCell.style.paddingRight = '0';
                             tr.appendChild(labelCell);
                             tr.appendChild(valueCell);
                         }

@@ -166,13 +166,27 @@ public class YtDlpClient
     }
 
     /// <summary>
-    /// Download a specific video URL into <paramref name="destinationPath"/>. Downloads
-    /// into a temp directory first, then copies to a ".part" name on the destination
-    /// volume and atomically renames into place - a direct write to the final name
-    /// could otherwise leave a truncated file with the "real" filename if interrupted
-    /// mid-copy, which a later run would mistake for a valid trailer.
+    /// Download a specific video URL into <paramref name="destinationPath"/>, retrying
+    /// once on failure. A single candidate occasionally fails for reasons that don't
+    /// reproduce on a second attempt (a network blip, a momentary hiccup in yt-dlp's
+    /// own JS-runtime-based signature deciphering) - confirmed by hand: a video that
+    /// failed once with "Requested format is not available" during a real run
+    /// downloaded successfully both times it was retried manually immediately after,
+    /// with the exact same command. One retry is cheap insurance against that without
+    /// masking a genuinely broken/unavailable video, which will just fail again.
     /// </summary>
     public async Task<bool> DownloadAsync(string url, string destinationPath, CancellationToken cancellationToken)
+    {
+        if (await DownloadOnceAsync(url, destinationPath, cancellationToken).ConfigureAwait(false))
+        {
+            return true;
+        }
+
+        _logger.LogInformation("  > Retrying download once...");
+        return await DownloadOnceAsync(url, destinationPath, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> DownloadOnceAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
         var tmpDir = Directory.CreateTempSubdirectory("trailer-fetcher-");
         try

@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.7.0",
+        "changelog": "Two fixes. The settings page's \"Last run\" table styling never actually applied (confirmed against 0.8.6.0, incognito included): Jellyfin's dashboard loads a plugin's config page by injecting its body content into the existing app shell, which drops the page's own <head> - a <style> block there silently never took effect. Rewrote the table to style itself entirely via inline styles set in JS instead, which can't be dropped that way. Also added a single retry to YtDlpClient.DownloadAsync: a download that failed with \"Requested format is not available\" during a real run was verified (by hand, twice, with the exact same command) to succeed immediately after - a transient hiccup, not a persistent problem with that video - so one retry is cheap insurance against exactly that without masking a genuinely unavailable video, which will just fail again on the retry too.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.7.0.zip",
+        "checksum": "83fb7aa6f123bcfa048179d9a9994693",
+        "timestamp": "2026-08-30T22:27:41Z"
+      },
+      {
         "version": "0.8.6.0",
         "changelog": "Fixed a high-impact porting regression in TitleMatching.TitleMatches: the YouTube result title was never lowercased before the phrase-match regex ran against it, while the candidate side always was - and .NET's Regex.Match is case-sensitive by default, so \"blue lock\" (candidate) silently never matched \"Blue Lock\" (a title-cased YouTube title) even though they're the same title. The standalone script avoids this by lowercasing yt_title once at the top of its filter function; the C# port dropped that step. This was very likely the dominant cause behind most search-based \"Title mismatch\" rejections seen throughout testing (movies and series both, not just the two TV cases that surfaced it) - confirmed against the exact failing case (\"Blue Lock - Official Trailer...\" now correctly matches \"Blue Lock\"). Also fixed SeriesTitleCleanup leaving an empty \"( )\" behind when the season-range fragment it removes was fully inside a parenthetical (\"Blue Lock (Season 1)\" -> \"Blue Lock ( )\" -> now \"Blue Lock\").",
         "targetAbi": "10.11.0.0",
