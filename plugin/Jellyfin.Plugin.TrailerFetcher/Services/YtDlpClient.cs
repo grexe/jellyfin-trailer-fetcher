@@ -108,7 +108,15 @@ public class YtDlpClient
     /// <summary>Fully extract metadata (title, duration, webpage_url) for every entry in a source, without downloading.</summary>
     public async Task<List<YtDlpCandidate>> ProbeAsync(string source, CancellationToken cancellationToken)
     {
-        var args = new List<string> { "-j", "--skip-download" };
+        // A probe only needs title/duration/webpage_url - it never downloads anything -
+        // but yt-dlp still resolves a format internally even for "-j --skip-download",
+        // and hard-fails the whole extraction if it can't (e.g. "Requested format is
+        // not available"), discarding metadata that was otherwise fully extracted.
+        // --ignore-no-formats-error keeps that metadata instead of losing a real,
+        // possibly-matching candidate over a format problem that doesn't matter yet -
+        // DownloadAsync (which does need a real format) still fails normally if this
+        // candidate turns out to not actually be downloadable.
+        var args = new List<string> { "-j", "--skip-download", "--ignore-no-formats-error" };
         args.AddRange(CommonArgs());
         args.Add(source);
 
