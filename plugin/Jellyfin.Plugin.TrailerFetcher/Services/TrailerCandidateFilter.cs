@@ -35,11 +35,17 @@ public static class TrailerCandidateFilter
 
         if (isSearch)
         {
-            var keywordMatch = TitleMatching.HasTrailerKeyword(candidate.Title);
             var titleMatch = TitleMatching.TitleMatches(candidate.Title, titleVariants);
-            if (!(titleMatch && keywordMatch))
+            if (!titleMatch)
             {
-                rejectReason = $"Rejected. Title mismatch or missing keyword: \"{candidate.Title}\"";
+                rejectReason = $"Title mismatch: {candidate.Title}";
+                return false;
+            }
+
+            var keywordMatch = TitleMatching.HasTrailerKeyword(candidate.Title);
+            if (!keywordMatch)
+            {
+                rejectReason = $"Title matches, but no trailer keyword (trailer/teaser/...): {candidate.Title}";
                 return false;
             }
         }

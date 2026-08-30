@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.11.0",
+        "changelog": "Small polish from live testing. The candidate-rejection log line was ambiguous (\"Title mismatch or missing keyword\") when the code actually knows which one it was - split into two distinct, specific messages (\"Title mismatch: ...\" vs \"Title matches, but no trailer keyword (trailer/teaser/...): ...\"). Also dropped a manually-added inner quote pair around the candidate title in that message, which stacked with the logging backend's own automatic quoting the same way earlier quoting bugs did.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.11.0.zip",
+        "checksum": "8243eee5879eff7df98aaec984e886d1",
+        "timestamp": "2026-08-30T23:05:35Z"
+      },
+      {
         "version": "0.8.10.0",
         "changelog": "Found and fixed the actual root cause of the \"Only images are available\" failures (deno confirmed fully functional in 0.8.9.0's diagnostics). Removed the hardcoded --extractor-args youtube:player_client=web,android,ios override - it made sense when the standalone script was written, but confirmed live and by hand: it's become actively harmful as YouTube's defenses evolved (android/ios are now routinely filtered by SABR/PO-token requirements), while yt-dlp's own default client selection (actively maintained upstream to route around exactly this) found proper adaptive formats via a different client. That default choice isn't fully reliable either though - confirmed live and reproduced consistently by hand: its first-choice client's formats can extract fine but 403 on the actual download. DownloadAsync now tries the default first, and retries with an explicit player_client=mweb on failure specifically (not just repeating the same command) - mweb's own adaptive formats get filtered the same way, but it then falls back cleanly to a legacy, reliably-downloadable format instead of failing outright, confirmed consistent across repeated attempts. Verified the whole two-tier sequence end to end against the exact failing video before shipping.",
         "targetAbi": "10.11.0.0",
