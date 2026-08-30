@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.7.0.0"
+version: "0.7.1.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,13 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.7.1.0: Logged paths (directory entries, rename/migration targets) now show
+  relative to the movie's own library root (via BaseItem.GetTopParent()) instead of
+  the full container path, so log lines aren't dominated by a repeated mount-point
+  prefix. Also fixed one path that was still logged in full (unlike its sibling
+  lines) in the rename-folder failure case. No behavior change - display only.
+
+
   0.7.0.0: First real-run fixes from live testing. Fixed a class of log-quoting bugs
   where a value already wrapped in manual quotes in the message template got
   double-quoted (the logging backend quotes string values by default) - e.g. a

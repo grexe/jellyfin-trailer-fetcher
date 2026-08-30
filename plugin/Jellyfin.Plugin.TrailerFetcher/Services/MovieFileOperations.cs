@@ -94,7 +94,7 @@ public static class MovieFileOperations
     /// folder is renamed to match too - otherwise a later migrate call would see a
     /// mismatch and nest a new, wrongly-named folder inside the existing one.
     /// </summary>
-    public static (string NewLocalPath, bool Renamed) RenameMovieFile(string localPath, string safeTitle, bool dryRun, ILogger logger)
+    public static (string NewLocalPath, bool Renamed) RenameMovieFile(string localPath, string safeTitle, bool dryRun, string? libraryRoot, ILogger logger)
     {
         var folderPath = Path.GetDirectoryName(localPath) ?? string.Empty;
         var ext = Path.GetExtension(localPath);
@@ -146,7 +146,7 @@ public static class MovieFileOperations
                 }
                 catch (IOException e)
                 {
-                    logger.LogError("  > Failed to rename folder {Folder}: {Error}", folderPath, e.Message);
+                    logger.LogError("  > Failed to rename folder {Folder}: {Error}", PathDisplay.Relative(folderPath, libraryRoot), e.Message);
                     targetMoviePath = Path.Combine(folderPath, $"{safeTitle}{ext}");
                 }
             }
@@ -198,7 +198,7 @@ public static class MovieFileOperations
     /// differs from the movie file's own (possibly still-messy) name. Safe to call
     /// repeatedly: a movie already living in its own folder is left untouched.
     /// </summary>
-    public static (string NewLocalPath, bool Moved) MigrateToOwnFolder(string localPath, bool dryRun, IEnumerable<string> extraStems, ILogger logger)
+    public static (string NewLocalPath, bool Moved) MigrateToOwnFolder(string localPath, bool dryRun, IEnumerable<string> extraStems, string? libraryRoot, ILogger logger)
     {
         var currentDir = Path.GetDirectoryName(localPath) ?? string.Empty;
         var movieStem = Path.GetFileNameWithoutExtension(localPath);
@@ -225,7 +225,7 @@ public static class MovieFileOperations
         }
         catch (IOException e)
         {
-            logger.LogWarning("  > Could not list {Dir} for migration: {Error}", currentDir, e.Message);
+            logger.LogWarning("  > Could not list {Dir} for migration: {Error}", PathDisplay.Relative(currentDir, libraryRoot), e.Message);
             return (localPath, false);
         }
 
@@ -250,7 +250,7 @@ public static class MovieFileOperations
         }
         catch (IOException e)
         {
-            logger.LogError("  > Failed to create folder {Dir}: {Error}", targetDir, e.Message);
+            logger.LogError("  > Failed to create folder {Dir}: {Error}", PathDisplay.Relative(targetDir, libraryRoot), e.Message);
             return (localPath, false);
         }
 
@@ -262,7 +262,10 @@ public static class MovieFileOperations
             var dst = Path.Combine(targetDir, name);
             if (File.Exists(dst))
             {
-                logger.LogWarning("  > Migration target {Dst} already exists, leaving {Src} in place.", dst, src);
+                logger.LogWarning(
+                    "  > Migration target {Dst} already exists, leaving {Src} in place.",
+                    PathDisplay.Relative(dst, libraryRoot),
+                    PathDisplay.Relative(src, libraryRoot));
                 continue;
             }
 
@@ -277,7 +280,11 @@ public static class MovieFileOperations
             }
             catch (IOException e)
             {
-                logger.LogError("  > Failed to move {Src} to {Dst}: {Error}", src, dst, e.Message);
+                logger.LogError(
+                    "  > Failed to move {Src} to {Dst}: {Error}",
+                    PathDisplay.Relative(src, libraryRoot),
+                    PathDisplay.Relative(dst, libraryRoot),
+                    e.Message);
             }
         }
 

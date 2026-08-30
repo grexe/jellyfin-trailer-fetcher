@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.7.1.0",
+        "changelog": "Logged paths (directory entries, rename/migration targets) now show relative to the movie's own library root (via BaseItem.GetTopParent()) instead of the full container path, so log lines aren't dominated by a repeated mount-point prefix. Also fixed one path that was still logged in full (unlike its sibling lines) in the rename-folder failure case. No behavior change - display only.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.7.1.0.zip",
+        "checksum": "4d52314c9a513930eec589c2d3b79aa3",
+        "timestamp": "2026-08-30T20:33:04Z"
+      },
+      {
         "version": "0.7.0.0",
         "changelog": "First real-run fixes from live testing. Fixed a class of log-quoting bugs where a value already wrapped in manual quotes in the message template got double-quoted (the logging backend quotes string values by default). Also dropped the library's GUID from the scan-start log line (not useful in the UI) and fixed a related bug where a DRY-RUN prefix fragment spliced in through its own placeholder got quoted on its own. Tightened the yt-dlp/deno download timeout from 5 minutes to 2 and gave it a clear, actionable message on failure (mentioning GitHub's release CDN specifically) instead of leaving a run looking hung - a download that times out no longer masks a deliberate task cancellation as an ordinary download failure, either. The last run's summary is now also persisted and shown on the settings page, not just buried in the log.",
         "targetAbi": "10.11.0.0",

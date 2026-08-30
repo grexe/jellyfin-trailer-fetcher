@@ -166,9 +166,14 @@ public class FetchTrailersTask : IScheduledTask
             return;
         }
 
+        // The library's own root folder (e.g. "/media/Anime/Movies"), so paths in the
+        // log can be shown relative to it instead of repeating the full container path
+        // (mount point, library hierarchy) on every line.
+        var libraryRoot = movie.GetTopParent()?.Path;
+
         if (!MovieFileOperations.IsValidMediaFile(localPath, out var reason))
         {
-            _logger.LogWarning("Skipping {Title}: {Reason} ({Path})", rawTitle, reason, localPath);
+            _logger.LogWarning("Skipping {Title}: {Reason} ({Path})", rawTitle, reason, PathDisplay.Relative(localPath, libraryRoot));
             stats.Skipped++;
             return;
         }
@@ -180,7 +185,7 @@ public class FetchTrailersTask : IScheduledTask
 
         if (stats.LastDir != folderPath)
         {
-            _logger.LogInformation("*** Entering directory: {Dir}", folderPath);
+            _logger.LogInformation("*** Entering directory: {Dir}", PathDisplay.Relative(folderPath, libraryRoot));
             stats.LastDir = folderPath;
         }
 
@@ -214,7 +219,7 @@ public class FetchTrailersTask : IScheduledTask
         {
             if (config.RenameOriginal)
             {
-                var (newPath, renamed) = MovieFileOperations.RenameMovieFile(localPath, safeTitle, config.DryRun, _logger);
+                var (newPath, renamed) = MovieFileOperations.RenameMovieFile(localPath, safeTitle, config.DryRun, libraryRoot, _logger);
                 if (renamed)
                 {
                     stats.Renamed++;
@@ -295,7 +300,7 @@ public class FetchTrailersTask : IScheduledTask
                              (config.MigrateToFolders == MigrationMode.TrailersOnly && (alreadyHadTrailer || downloadSuccess));
         if (shouldMigrate)
         {
-            var (_, moved) = MovieFileOperations.MigrateToOwnFolder(localPath, config.DryRun, [safeTitle], _logger);
+            var (_, moved) = MovieFileOperations.MigrateToOwnFolder(localPath, config.DryRun, [safeTitle], libraryRoot, _logger);
             if (moved)
             {
                 stats.Migrated++;
