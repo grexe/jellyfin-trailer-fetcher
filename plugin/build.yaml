@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.4.0.0"
+version: "0.4.1.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,18 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.4.1.0: Fixed the "0 movies found" library-scoping bug, confirmed via diagnostic
+  logging added in 0.4.0.0 (1026 movies found server-wide, 0 when scoped to a
+  library known to contain real movies). The fix was hand-building
+  InternalItemsQuery.TopParentIds from VirtualFolderInfo.ItemId directly - that id
+  does not reliably match what TopParentIds-based filtering expects, since
+  TopParentIds is normally computed internally by LibraryManager from a resolved
+  parent item, not meant to be built by callers from a raw id string. Now resolves
+  each configured library to its actual item via ILibraryManager.GetItemById() and
+  queries it via InternalItemsQuery.Parent instead (one query per selected library,
+  merged).
+
+
   0.4.0.0: Fixed a real stability bug: the compiled assembly never had its own
   <Version>/<AssemblyVersion> set, so it silently defaulted to .NET's "1.0.0.0"
   regardless of what build.yaml/manifest.json declared. That mismatch between the

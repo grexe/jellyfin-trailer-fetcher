@@ -62,80 +62,79 @@ public class FetchTrailersTask : IScheduledTask
             config.DryRun,
             config.TriggerLibraryScan);
 
-        // Diagnostic: list every library the server knows about, with the exact id
-        // TopParentIds scoping below needs. Temporary - here to pin down a reported
-        // "0 movies found" against a library known to contain real movie files, which
-        // hasn't been reproduced locally (no live server to test against).
-        var allLibraries = _libraryManager.GetVirtualFolders();
-        foreach (var lib in allLibraries)
+        var libraryIds = config.LibraryIds ?? Array.Empty<string>();
+        var movies = libraryIds.Length > 0
+            ? GetMoviesInSelectedLibraries(libraryIds)
+            : GetAllMovies();
+
+        _logger.LogInformation("Found {Count} movie(s) to process.", movies.Count);
+
+        progress.Report(100);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Queries movies scoped to the configured libraries. Each library is resolved to
+    /// its actual <see cref="BaseItem"/> via <see cref="ILibraryManager.GetItemById(Guid)"/>
+    /// and queried individually via <see cref="InternalItemsQuery.Parent"/>, rather than
+    /// hand-building <see cref="InternalItemsQuery.TopParentIds"/> from
+    /// <c>VirtualFolderInfo.ItemId</c> directly - that id does not reliably match what
+    /// TopParentIds-based filtering expects (confirmed: a query scoped this way
+    /// returned 0 results against a library server-side reporting had 1026+ movies
+    /// total), and TopParentIds is normally computed internally by LibraryManager from
+    /// a resolved parent item, not meant to be built by callers from a raw id string.
+    /// </summary>
+    private List<BaseItem> GetMoviesInSelectedLibraries(string[] libraryIds)
+    {
+        var movies = new List<BaseItem>();
+        var seenIds = new HashSet<Guid>();
+
+        foreach (var id in libraryIds)
         {
-            _logger.LogInformation(
-                "Known library: Name={Name}, ItemId={ItemId}, CollectionType={CollectionType}",
-                lib.Name,
-                lib.ItemId,
-                lib.CollectionType?.ToString() ?? "(none)");
+            if (!Guid.TryParse(id, out var guid))
+            {
+                _logger.LogWarning("Configured library id '{Id}' is not a valid GUID, skipping it.", id);
+                continue;
+            }
+
+            var libraryItem = _libraryManager.GetItemById(guid);
+            if (libraryItem is null)
+            {
+                _logger.LogWarning("Configured library id '{Id}' did not resolve to any item, skipping it.", guid);
+                continue;
+            }
+
+            _logger.LogInformation("Scanning library '{Name}' ({Id})...", libraryItem.Name, guid);
+
+            var libraryMovies = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Movie },
+                Recursive = true,
+                IsVirtualItem = false,
+                Parent = libraryItem
+            });
+
+            foreach (var movie in libraryMovies)
+            {
+                if (seenIds.Add(movie.Id))
+                {
+                    movies.Add(movie);
+                }
+            }
         }
 
-        var query = new InternalItemsQuery
+        return movies;
+    }
+
+    private List<BaseItem> GetAllMovies()
+    {
+        _logger.LogInformation("No specific libraries selected - scanning all libraries.");
+        return _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie },
             Recursive = true,
             IsVirtualItem = false
-        };
-
-        var libraryIds = config.LibraryIds ?? Array.Empty<string>();
-        var scopedToLibraries = false;
-        if (libraryIds.Length > 0)
-        {
-            var parsedIds = new List<Guid>();
-            foreach (var id in libraryIds)
-            {
-                if (Guid.TryParse(id, out var guid))
-                {
-                    parsedIds.Add(guid);
-                }
-                else
-                {
-                    _logger.LogWarning("Configured library id '{Id}' is not a valid GUID, skipping it.", id);
-                }
-            }
-
-            if (parsedIds.Count > 0)
-            {
-                query.TopParentIds = parsedIds.ToArray();
-                scopedToLibraries = true;
-                var libraryWord = parsedIds.Count == 1 ? "library" : "libraries";
-                _logger.LogInformation($"Scanning {parsedIds.Count} selected {libraryWord} only: [{string.Join(", ", parsedIds)}]");
-            }
-        }
-        else
-        {
-            _logger.LogInformation("No specific libraries selected - scanning all libraries.");
-        }
-
-        var movies = _libraryManager.GetItemList(query);
-        _logger.LogInformation("Found {Count} movie(s) to process.", movies.Count);
-
-        // Diagnostic: if a library scope was configured but found nothing, check
-        // whether that's a scoping problem (TopParentIds not matching) or a
-        // classification problem (nothing in that library is BaseItemKind.Movie at
-        // all) by re-running without the library scope and without IsVirtualItem.
-        if (scopedToLibraries && movies.Count == 0)
-        {
-            var unscopedCount = _libraryManager.GetItemList(new InternalItemsQuery
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Movie },
-                Recursive = true
-            }).Count;
-            _logger.LogInformation(
-                "Diagnostic: {UnscopedCount} movie(s) found server-wide (no library scope, no IsVirtualItem filter) - " +
-                "if this is also 0, the library likely isn't classified as containing Movie items; if it's > 0, " +
-                "the library scope (TopParentIds) is likely not matching this library's items.",
-                unscopedCount);
-        }
-
-        progress.Report(100);
-        return Task.CompletedTask;
+        }).ToList();
     }
 
     /// <inheritdoc />

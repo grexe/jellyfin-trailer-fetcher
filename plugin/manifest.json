@@ -9,12 +9,12 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
-        "version": "0.4.0.0",
-        "changelog": "Fixed a real stability bug: the compiled assembly never had its own Version/AssemblyVersion set, so it silently defaulted to .NET's \"1.0.0.0\" regardless of what the manifest declared - causing the dashboard to revert to \"1.0.0.0\" after a task run or restart, and uninstall to fail outright. Also moved the scheduled task into the \"Library\" category, fixed a stray quoted-string artifact in one log line, and added diagnostic logging to help track down a reported \"0 movies found\" when scoped to a specific library.",
+        "version": "0.4.1.0",
+        "changelog": "Fixed the \"0 movies found\" library-scoping bug, confirmed via diagnostic logging (1026 movies found server-wide, 0 when scoped to a library known to contain real movies). The fix was hand-building TopParentIds from VirtualFolderInfo.ItemId directly, which does not reliably match what TopParentIds-based filtering expects. Now resolves each configured library via ILibraryManager.GetItemById() and queries via InternalItemsQuery.Parent instead.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.4.0.0.zip",
-        "checksum": "5b10f1ed73bdb2f5dfbdf40d5962b496",
-        "timestamp": "2026-08-30T13:33:25Z"
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.4.1.0.zip",
+        "checksum": "f09046fd7356def508707f00f1fb794b",
+        "timestamp": "2026-08-30T13:42:32Z"
       }
     ]
   }
