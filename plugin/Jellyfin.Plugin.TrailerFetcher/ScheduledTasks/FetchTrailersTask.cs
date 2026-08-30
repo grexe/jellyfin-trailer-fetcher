@@ -111,14 +111,17 @@ public class FetchTrailersTask : IScheduledTask
         var totalItems = movies.Count + series.Count;
         var startedAt = DateTime.UtcNow;
 
-        // Cancelling a run (e.g. from the dashboard) must still leave the summary
-        // reflecting whatever was found before it stopped, rather than silently
-        // leaving a stale summary from a previous run on display - so the cancellation
-        // is caught here (not left to propagate straight out of the loops), the
-        // partial summary is logged/persisted, and only then is it rethrown so
-        // Jellyfin's TaskManager still correctly reports the run as cancelled rather
-        // than completed.
+        // Cancelling a run (e.g. from the dashboard), or YouTube rate-limiting the
+        // session, must still leave the summary reflecting whatever was found before
+        // it stopped, rather than silently leaving a stale summary from a previous run
+        // on display - so both are caught here (not left to propagate straight out of
+        // the loops) and the partial summary is logged/persisted either way.
+        // Cancellation is then rethrown so Jellyfin's TaskManager still correctly
+        // reports the run as cancelled rather than completed; a rate limit isn't an
+        // admin-initiated cancellation, so that case completes normally instead (with
+        // a clear ERROR-level log line and a distinct stop reason in the summary).
         OperationCanceledException? cancellation = null;
+        string? stopReason = null;
         try
         {
             for (var i = 0; i < movies.Count; i++)
@@ -138,9 +141,19 @@ public class FetchTrailersTask : IScheduledTask
         catch (OperationCanceledException ex)
         {
             cancellation = ex;
+            stopReason = "Cancelled";
+        }
+        catch (YouTubeRateLimitedException ex)
+        {
+            stopReason = "YouTube rate-limited this session";
+            _logger.LogError(
+                "YouTube has rate-limited this session - stopping the run early rather than continuing to " +
+                "hit the same limit for every remaining movie/series (which wouldn't help, and risks making " +
+                "it worse). Detail: {Detail}",
+                ex.Message);
         }
 
-        LogSummary(stats, movies.Count, series.Count, config.DryRun, startedAt, aborted: cancellation is not null);
+        LogSummary(stats, movies.Count, series.Count, config.DryRun, startedAt, stopReason);
 
         if (cancellation is not null)
         {
@@ -180,7 +193,7 @@ public class FetchTrailersTask : IScheduledTask
     {
         if (config.DryRun)
         {
-            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
+            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, config.RequestDelaySeconds, _logger);
         }
 
         var provisioner = new DependencyProvisioner(_httpClientFactory, Plugin.Instance!.DataFolderPath, _logger);
@@ -188,7 +201,7 @@ public class FetchTrailersTask : IScheduledTask
         if (managedYtDlp is null)
         {
             _logger.LogError("Could not automatically provision yt-dlp; no trailers can be fetched this run.");
-            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
+            return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, config.RequestDelaySeconds, _logger);
         }
 
         var managedDeno = await provisioner.EnsureDenoAsync(cancellationToken).ConfigureAwait(false);
@@ -206,7 +219,7 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         _logger.LogInformation("Using yt-dlp: {YtDlpPath}, deno: {DenoPath}", managedYtDlp, managedDeno ?? "(not available)");
-        return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, _logger);
+        return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, config.RequestDelaySeconds, _logger);
     }
 
     private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)
@@ -491,7 +504,7 @@ public class FetchTrailersTask : IScheduledTask
         }
     }
 
-    private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun, DateTime startedAt, bool aborted)
+    private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun, DateTime startedAt, string? stopReason)
     {
         var completedAt = DateTime.UtcNow;
         RunSummaryStore.Save(
@@ -499,7 +512,7 @@ public class FetchTrailersTask : IScheduledTask
             new RunSummary(
                 completedAt,
                 (completedAt - startedAt).TotalSeconds,
-                aborted,
+                stopReason,
                 dryRun,
                 totalMovies,
                 stats.Scanned,
@@ -518,7 +531,15 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation(string.Empty);
         _logger.LogInformation("==========================================");
-        _logger.LogInformation(aborted ? "        TRAILER SYNC SUMMARY [ABORTED]    " : "           TRAILER SYNC SUMMARY           ");
+        if (stopReason is not null)
+        {
+            _logger.LogInformation("     TRAILER SYNC SUMMARY [{StopReason}]   ", stopReason);
+        }
+        else
+        {
+            _logger.LogInformation("           TRAILER SYNC SUMMARY           ");
+        }
+
         _logger.LogInformation("==========================================");
 
         // Only the libraries actually in scope for this run get a section - a run

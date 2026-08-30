@@ -35,6 +35,7 @@ public class YtDlpClient
     private readonly string? _denoPath;
     private readonly string? _cookiesFilePath;
     private readonly string? _ffmpegDir;
+    private readonly TimeSpan _requestDelay;
     private readonly ILogger _logger;
 
     /// <summary>
@@ -44,13 +45,15 @@ public class YtDlpClient
     /// <param name="denoPath">Path to a managed deno executable, if one was provisioned; null to fall back to a bare "deno"/"node" PATH lookup.</param>
     /// <param name="cookiesFilePath">Path to a Netscape-format cookies.txt, if configured.</param>
     /// <param name="ffmpegDir">Directory containing Jellyfin's own ffmpeg binary, reused by yt-dlp for muxing.</param>
+    /// <param name="requestDelaySeconds">Minimum seconds to wait before each yt-dlp invocation, to avoid tripping YouTube's own rate limiting across a large run.</param>
     /// <param name="logger">Instance of the <see cref="ILogger"/> interface.</param>
-    public YtDlpClient(string ytDlpExecutable, string? denoPath, string? cookiesFilePath, string? ffmpegDir, ILogger logger)
+    public YtDlpClient(string ytDlpExecutable, string? denoPath, string? cookiesFilePath, string? ffmpegDir, int requestDelaySeconds, ILogger logger)
     {
         _ytDlpExecutable = ytDlpExecutable;
         _denoPath = denoPath;
         _cookiesFilePath = cookiesFilePath;
         _ffmpegDir = ffmpegDir;
+        _requestDelay = TimeSpan.FromSeconds(Math.Max(0, requestDelaySeconds));
         _logger = logger;
     }
 
@@ -315,6 +318,11 @@ public class YtDlpClient
 
     private async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(List<string> args, CancellationToken cancellationToken)
     {
+        if (_requestDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(_requestDelay, cancellationToken).ConfigureAwait(false);
+        }
+
         var psi = new ProcessStartInfo
         {
             FileName = _ytDlpExecutable,
@@ -368,6 +376,22 @@ public class YtDlpClient
             throw;
         }
 
-        return (process.ExitCode, stdout.ToString(), stderr.ToString());
+        var stderrText = stderr.ToString();
+
+        // A distinct, terminal condition, not an ordinary per-candidate failure: once
+        // YouTube has rate-limited the session, no client/format fallback will help,
+        // and continuing to send requests (to more candidates, or the next
+        // movie/series) just wastes time against a block that won't lift itself any
+        // faster - possibly making it worse. Thrown here (not just logged) so it
+        // propagates straight past every retry tier and the movie/series loop itself.
+        if (stderrText.Contains("rate-limited by YouTube", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new YouTubeRateLimitedException(
+                stderrText.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault(l => l.Contains("rate-limited", StringComparison.OrdinalIgnoreCase))
+                    ?? "YouTube has rate-limited this session.");
+        }
+
+        return (process.ExitCode, stdout.ToString(), stderrText);
     }
 }

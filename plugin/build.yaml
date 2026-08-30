@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.14.0"
+version: "0.8.15.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,24 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.15.0: Handle YouTube's own rate limiting instead of grinding through it.
+  Confirmed live on a long run: once YouTube rate-limits a session ("The current
+  session has been rate-limited by YouTube for up to an hour"), no client/format
+  fallback helps, and continuing on to retry other clients or move to the next
+  movie/series just wastes time against a block that won't lift itself any sooner -
+  possibly making it worse. YtDlpClient now detects this specific condition and
+  throws a distinct YouTubeRateLimitedException that propagates straight past every
+  retry tier and out of the movie/series loop, stopping the whole run early - with
+  whatever was found before it hit still logged/persisted the same way a cancelled
+  run's partial summary already is (RunSummary's Aborted flag is now a StopReason
+  string so the summary/log can say "YouTube rate-limited this session" specifically,
+  not just "cancelled"). Also added a "Delay between requests" setting (default 3s,
+  configurable, 0 disables it) - a plain per-invocation delay before every yt-dlp
+  call, sized for this plugin's actual pattern of many short-lived separate
+  invocations rather than yt-dlp's own "-t sleep" preset (which sleeps up to 20s per
+  download, tuned for one long-running session working through a playlist).
+
+
   0.8.14.0: Added a "Verbose logging" setting. Each rejected search candidate's
   specific reason ("Title mismatch: ...", "Duration > 300s: ...") is now only logged
   when it's turned on (off by default) - a movie/series that needs several fallback

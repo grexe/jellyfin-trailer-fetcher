@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.15.0",
+        "changelog": "Handle YouTube's own rate limiting instead of grinding through it. Confirmed live on a long run: once YouTube rate-limits a session (\"The current session has been rate-limited by YouTube for up to an hour\"), no client/format fallback helps, and continuing on to retry other clients or move to the next movie/series just wastes time against a block that won't lift itself any sooner - possibly making it worse. YtDlpClient now detects this specific condition and throws a distinct YouTubeRateLimitedException that propagates straight past every retry tier and out of the movie/series loop, stopping the whole run early - with whatever was found before it hit still logged/persisted the same way a cancelled run's partial summary already is (RunSummary's Aborted flag is now a StopReason string so the summary/log can say \"YouTube rate-limited this session\" specifically, not just \"cancelled\"). Also added a \"Delay between requests\" setting (default 3s, configurable, 0 disables it) - a plain per-invocation delay before every yt-dlp call, sized for this plugin's actual pattern of many short-lived separate invocations rather than yt-dlp's own \"-t sleep\" preset (which sleeps up to 20s per download, tuned for one long-running session working through a playlist).",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.15.0.zip",
+        "checksum": "dbc64cec8154e2cd32d22510b6a8f18b",
+        "timestamp": "2026-08-30T23:51:54Z"
+      },
+      {
         "version": "0.8.14.0",
         "changelog": "Added a \"Verbose logging\" setting. Each rejected search candidate's specific reason (\"Title mismatch: ...\", \"Duration > 300s: ...\") is now only logged when it's turned on (off by default) - a movie/series that needs several fallback search stages before finding (or giving up on) a trailer can generate dozens of these lines, burying the handful that actually matter for a normal run. Each search stage's overall outcome (what was searched, found or not) is still always logged regardless; this only trims the per-candidate detail within a stage, which matters most when actively diagnosing why a specific movie/series isn't finding a trailer it should.",
         "targetAbi": "10.11.0.0",

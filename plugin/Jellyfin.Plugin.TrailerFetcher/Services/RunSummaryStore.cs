@@ -5,11 +5,16 @@ using System.Text.Json.Serialization;
 
 namespace Jellyfin.Plugin.TrailerFetcher.Services;
 
-/// <summary>The outcome of the most recent "Fetch Missing Trailers" task run, shown on the settings page.</summary>
+/// <summary>
+/// The outcome of the most recent "Fetch Missing Trailers" task run, shown on the
+/// settings page. <c>StopReason</c> is null if the run processed everything in scope;
+/// otherwise why it stopped early (e.g. "Cancelled", "YouTube rate-limited this
+/// session") - whatever was found up to that point is still reflected in the counts.
+/// </summary>
 public record RunSummary(
     [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc,
     [property: JsonPropertyName("durationSeconds")] double DurationSeconds,
-    [property: JsonPropertyName("aborted")] bool Aborted,
+    [property: JsonPropertyName("stopReason")] string? StopReason,
     [property: JsonPropertyName("dryRun")] bool DryRun,
     [property: JsonPropertyName("totalMovies")] int TotalMovies,
     [property: JsonPropertyName("scanned")] int Scanned,

@@ -94,6 +94,18 @@
                         <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="RequestDelaySeconds">Delay between requests (seconds)</label>
+                        <input id="RequestDelaySeconds" name="RequestDelaySeconds" type="number" is="emby-input" min="0" value="3" />
+                        <div class="fieldDescription">
+                            Minimum wait before each yt-dlp request. A large library can add up to many separate
+                            requests with no pacing between them, which can trip YouTube's own rate limiting -
+                            that then blocks the whole session for up to an hour, with every remaining movie/series
+                            failing until it lifts. Lower this only if you're confident it won't happen; 0 disables
+                            the delay entirely.
+                        </div>
+                    </div>
+
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -247,13 +259,13 @@
                     if (summary.dryRun) {
                         headerBits.push('dry run');
                     }
-                    if (summary.aborted) {
-                        headerBits.push('cancelled - partial results');
+                    if (summary.stopReason) {
+                        headerBits.push(summary.stopReason + ' - partial results');
                     }
                     var header = document.createElement('div');
                     header.textContent = headerBits.join(' · ');
                     header.style.marginBottom = '0.5em';
-                    if (summary.aborted) {
+                    if (summary.stopReason) {
                         header.style.fontWeight = 'bold';
                     }
                     el.appendChild(header);
@@ -343,6 +355,7 @@
                         document.querySelector('#DryRun').checked = config.DryRun;
                         document.querySelector('#VerboseLogging').checked = config.VerboseLogging;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
+                        document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
                         updateCookiesStatus(config.CookiesFilePath);
                         loadLibraries(config.LibraryIds || []);
                         Dashboard.hideLoadingMsg();
@@ -414,6 +427,7 @@
                         config.DryRun = document.querySelector('#DryRun').checked;
                         config.VerboseLogging = document.querySelector('#VerboseLogging').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
+                        config.RequestDelaySeconds = parseInt(document.querySelector('#RequestDelaySeconds').value, 10);
                         config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
                             return el.value;
                         });

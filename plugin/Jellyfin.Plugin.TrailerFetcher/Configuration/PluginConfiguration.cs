@@ -48,6 +48,7 @@ public class PluginConfiguration : BasePluginConfiguration
         MaxTrailerDurationSeconds = 300;
         LibraryIds = Array.Empty<string>();
         VerboseLogging = false;
+        RequestDelaySeconds = 3;
     }
 
     /// <summary>
@@ -110,4 +111,19 @@ public class PluginConfiguration : BasePluginConfiguration
     /// movie/series isn't finding a trailer it should.
     /// </summary>
     public bool VerboseLogging { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum number of seconds to wait before each yt-dlp
+    /// invocation (every search probe and every download attempt). A movie/series
+    /// that needs several fallback search stages can trigger a couple dozen separate
+    /// yt-dlp calls on its own; across a large library with no pacing at all between
+    /// them, this can (and did, live) trip YouTube's own rate limiting, which then
+    /// blocks the server's whole session for up to an hour - continuing to hammer it
+    /// with more requests during that window doesn't help and risks making it worse.
+    /// yt-dlp's own suggested mitigation (its "-t sleep" preset) sleeps up to 20s per
+    /// download, tuned for one long-running session working through a playlist, not
+    /// this plugin's pattern of many short-lived separate invocations - a plain,
+    /// smaller per-invocation delay to actually match that pattern.
+    /// </summary>
+    public int RequestDelaySeconds { get; set; }
 }
