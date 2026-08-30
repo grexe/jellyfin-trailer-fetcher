@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.11.0"
+version: "0.8.12.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,23 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.12.0: Fixed a regression from 0.8.10.0 that broke cookies-based
+  authenticated/age-restricted access: an age-restricted video failed with "Sign in
+  to confirm your age" despite a valid, verified-account cookies.txt being uploaded.
+  0.8.10.0 removed the player_client override entirely, but it had been doing two
+  different jobs - restricting to a now-stale "web,android,ios" list (correctly
+  removed) and forcing player_client=web whenever cookies were configured (needed,
+  and removed by mistake): a cookies file only actually takes effect on the "web"
+  client, since the app-style clients (android, ios, mweb, tv, android_vr, ...)
+  authenticate via device tokens and silently ignore a cookies file regardless of
+  --cookies being set. CommonArgs now forces player_client=web again specifically
+  when a cookies file is configured. Also updated DownloadAsync's mweb retry
+  fallback to skip itself (retrying the same web-forced command instead) whenever
+  cookies are set, since mweb doesn't honor cookies either and falling back to it
+  would silently drop the authenticated access for that attempt, and would have
+  sent yt-dlp two conflicting player_client overrides in the same command.
+
+
   0.8.11.0: Small polish from live testing. The candidate-rejection log line was
   ambiguous ("Title mismatch or missing keyword") when the code actually knows which
   one it was - split into two distinct, specific messages ("Title mismatch: ..." vs

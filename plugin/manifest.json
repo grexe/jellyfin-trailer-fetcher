@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.12.0",
+        "changelog": "Fixed a regression from 0.8.10.0 that broke cookies-based authenticated/age-restricted access: an age-restricted video failed with \"Sign in to confirm your age\" despite a valid, verified-account cookies.txt being uploaded. 0.8.10.0 removed the player_client override entirely, but it had been doing two different jobs - restricting to a now-stale \"web,android,ios\" list (correctly removed) and forcing player_client=web whenever cookies were configured (needed, and removed by mistake): a cookies file only actually takes effect on the \"web\" client, since the app-style clients (android, ios, mweb, tv, android_vr, ...) authenticate via device tokens and silently ignore a cookies file regardless of --cookies being set. CommonArgs now forces player_client=web again specifically when a cookies file is configured. Also updated DownloadAsync's mweb retry fallback to skip itself (retrying the same web-forced command instead) whenever cookies are set, since mweb doesn't honor cookies either and would have sent yt-dlp two conflicting player_client overrides in the same command.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.12.0.zip",
+        "checksum": "479d649abded5dc1958ddd95b9394711",
+        "timestamp": "2026-08-30T23:09:50Z"
+      },
+      {
         "version": "0.8.11.0",
         "changelog": "Small polish from live testing. The candidate-rejection log line was ambiguous (\"Title mismatch or missing keyword\") when the code actually knows which one it was - split into two distinct, specific messages (\"Title mismatch: ...\" vs \"Title matches, but no trailer keyword (trailer/teaser/...): ...\"). Also dropped a manually-added inner quote pair around the candidate title in that message, which stacked with the logging backend's own automatic quoting the same way earlier quoting bugs did.",
         "targetAbi": "10.11.0.0",

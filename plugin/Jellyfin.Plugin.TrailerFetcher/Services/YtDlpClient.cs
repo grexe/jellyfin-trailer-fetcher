@@ -82,23 +82,23 @@ public class YtDlpClient
             args.Add("node");
         }
 
-        // Deliberately NOT pinning --extractor-args youtube:player_client. This used
-        // to hardcode "web,android,ios" (only "web" when cookies are set, since
-        // android/ios don't support cookies at all), which made sense when the
-        // standalone script was written but became actively harmful as YouTube's
-        // defenses evolved: android/ios formats are now routinely filtered out by
-        // SABR/PO-token requirements, and confirmed live - explicitly restricting to
-        // that list produced only a legacy fallback format (or, on one server,
-        // storyboard-images-only) where yt-dlp's own default client selection found
-        // proper adaptive formats via a different client entirely. yt-dlp's defaults
-        // are actively maintained to route around exactly this kind of restriction as
-        // YouTube changes; a client list pinned once and never revisited can only get
-        // staler over time. yt-dlp already skips clients that don't support cookies
-        // automatically when --cookies is set, so no extra handling is needed for that
-        // case either.
+        // No player_client override at all when there's no cookies file - see
+        // DownloadAsync's doc comment for why the old hardcoded "web,android,ios" list
+        // was removed there. But a configured cookies file only actually takes effect
+        // on the "web" client: the app-style internal clients (android, ios, mweb, tv,
+        // android_vr, ...) authenticate via device tokens, not cookies, and silently
+        // ignore a cookies file entirely regardless of --cookies being set (confirmed
+        // live: an age-restricted video failed with "Sign in to confirm your age" even
+        // with valid, verified-account cookies uploaded, because yt-dlp's now-default
+        // client selection picked something other than "web" for it). So cookies
+        // still force player_client=web specifically - the one case where leaving
+        // client selection fully open is wrong, since a client that ignores the
+        // cookies isn't actually a fallback for what they're there to do.
         var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
         if (hasCookies)
         {
+            args.Add("--extractor-args");
+            args.Add("youtube:player_client=web");
             args.Add("--cookies");
             args.Add(_cookiesFilePath!);
         }
@@ -187,13 +187,31 @@ public class YtDlpClient
     /// 403 on the actual download, reproduced by hand multiple times. "mweb" doesn't
     /// have that problem: its adaptive formats get filtered for lacking a PO token, but
     /// it then falls back cleanly to a legacy, reliably-downloadable format instead of
-    /// failing outright - confirmed reliable across repeated manual attempts.
+    /// failing outright - confirmed reliable across repeated manual attempts. When a
+    /// cookies file is configured, the "mweb" fallback is skipped in favor of a plain
+    /// retry - "mweb" doesn't honor cookies at all (see CommonArgs), so falling back to
+    /// it would silently drop the authenticated/age-restricted access the cookies were
+    /// there for, confirmed live: an age-restricted video failed with "Sign in to
+    /// confirm your age" despite a valid, verified-account cookies file being uploaded.
     /// </summary>
     public async Task<bool> DownloadAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
         if (await DownloadOnceAsync(url, destinationPath, playerClientOverride: null, cancellationToken).ConfigureAwait(false))
         {
             return true;
+        }
+
+        // A configured cookies file only actually takes effect on the "web" client -
+        // CommonArgs already forces player_client=web whenever cookies are set, since
+        // the app-style clients ignore cookies entirely (see CommonArgs' doc comment).
+        // Falling back to "mweb" here would silently drop that authentication for the
+        // retry, so retry the same web-forced command instead in that case rather than
+        // adding a second, conflicting player_client override on top of it.
+        var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
+        if (hasCookies)
+        {
+            _logger.LogInformation("  > Retrying download once...");
+            return await DownloadOnceAsync(url, destinationPath, playerClientOverride: null, cancellationToken).ConfigureAwait(false);
         }
 
         _logger.LogInformation("  > Retrying download with a more conservative client (mweb)...");
