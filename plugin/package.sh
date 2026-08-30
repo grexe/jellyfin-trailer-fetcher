@@ -12,6 +12,7 @@ if [ -z "$VERSION" ]; then
     # No <Version> in the csproj - fall back to build.yaml's version field.
     VERSION="$(grep -m1 '^version:' build.yaml | sed -E 's/version: *"(.*)"/\1/')"
 fi
+TARGET_ABI="$(grep -m1 '^targetAbi:' build.yaml | sed -E 's/targetAbi: *"(.*)"/\1/')"
 
 echo "Packaging version $VERSION..."
 
@@ -40,7 +41,7 @@ cat <<EOF
     {
       "version": "$VERSION",
       "changelog": "See commit history.",
-      "targetAbi": "10.10.0.0",
+      "targetAbi": "$TARGET_ABI",
       "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/${ZIP_NAME}",
       "checksum": "$CHECKSUM",
       "timestamp": "$TIMESTAMP"

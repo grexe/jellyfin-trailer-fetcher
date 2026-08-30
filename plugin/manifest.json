@@ -6,14 +6,15 @@
     "overview": "Finds and downloads missing local movie trailers from YouTube via yt-dlp.",
     "owner": "grexe",
     "category": "General",
+    "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
-        "version": "0.2.0.0",
-        "changelog": "Cookie file upload (for authenticated/age-restricted YouTube access) and per-library scan scoping. Trailer search/download and folder migration logic ported from the standalone script still lands in a follow-up release - this build is for settings/wiring testing only, it does not fetch trailers yet.",
-        "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.2.0.0.zip",
-        "checksum": "2d868fc8fd064891bbc65c54d7f09e4a",
-        "timestamp": "2026-08-29T19:39:13Z"
+        "version": "0.3.0.0",
+        "changelog": "Retargeted to Jellyfin 10.11.x (net9.0; 10.11.x's packages dropped net8.0 support) - TaskTriggerInfo.Type is now the TaskTriggerInfoType enum instead of a string constant. No functional change otherwise.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.3.0.0.zip",
+        "checksum": "9838cea58bb826efb3e9c83ff61634f4",
+        "timestamp": "2026-08-30T12:11:40Z"
       }
     ]
   }
