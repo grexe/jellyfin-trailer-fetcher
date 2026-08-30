@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -23,16 +24,19 @@ namespace Jellyfin.Plugin.TrailerFetcher.ScheduledTasks;
 public class FetchTrailersTask : IScheduledTask
 {
     private readonly ILibraryManager _libraryManager;
+    private readonly ILocalizationManager _localization;
     private readonly ILogger<FetchTrailersTask> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FetchTrailersTask"/> class.
     /// </summary>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+    /// <param name="localization">Instance of the <see cref="ILocalizationManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{FetchTrailersTask}"/> interface.</param>
-    public FetchTrailersTask(ILibraryManager libraryManager, ILogger<FetchTrailersTask> logger)
+    public FetchTrailersTask(ILibraryManager libraryManager, ILocalizationManager localization, ILogger<FetchTrailersTask> logger)
     {
         _libraryManager = libraryManager;
+        _localization = localization;
         _logger = logger;
     }
 
@@ -46,9 +50,11 @@ public class FetchTrailersTask : IScheduledTask
     public string Description => "Downloads missing local movie trailers from YouTube via yt-dlp.";
 
     /// <inheritdoc />
-    // "Library" rather than a dedicated "Trailer Fetcher" category - no need for a
-    // whole extra category grouping in the Scheduled Tasks page for a single task.
-    public string Category => "Library";
+    // Same localized "TasksLibraryCategory" string the built-in library tasks use
+    // (e.g. RefreshMediaLibraryTask) - a literal "Library" only matches in English;
+    // on a non-English server it renders as its own untranslated group instead of
+    // joining the real "Library" group whose label came from this same key.
+    public string Category => _localization.GetLocalizedString("TasksLibraryCategory");
 
     /// <inheritdoc />
     public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)

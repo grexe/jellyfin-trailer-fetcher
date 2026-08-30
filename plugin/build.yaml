@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.4.1.0"
+version: "0.4.2.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,15 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.4.2.0: Fixed the scheduled task showing up in its own untranslated "Library"
+  group instead of joining the real Library group on non-English servers. The
+  task's Category was the literal string "Library", but built-in library tasks
+  (e.g. RefreshMediaLibraryTask) get their Category from
+  ILocalizationManager.GetLocalizedString("TasksLibraryCategory") - the same
+  server-side-localized key that this task now uses too, so both group under the
+  same (correctly translated) label.
+
+
   0.4.1.0: Fixed the "0 movies found" library-scoping bug, confirmed via diagnostic
   logging added in 0.4.0.0 (1026 movies found server-wide, 0 when scoped to a
   library known to contain real movies). The fix was hand-building

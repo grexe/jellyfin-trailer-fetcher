@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.4.2.0",
+        "changelog": "Fixed the scheduled task showing up in its own untranslated \"Library\" group instead of joining the real Library group on non-English servers. The task's Category was the literal string \"Library\", but built-in library tasks (e.g. RefreshMediaLibraryTask) get their Category from ILocalizationManager.GetLocalizedString(\"TasksLibraryCategory\") - the same server-side-localized key that this task now uses too, so both group under the same (correctly translated) label.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.4.2.0.zip",
+        "checksum": "1c895fd862cb85fc3cf1a162555bd3c6",
+        "timestamp": "2026-08-30T18:34:40Z"
+      },
+      {
         "version": "0.4.1.0",
         "changelog": "Fixed the \"0 movies found\" library-scoping bug, confirmed via diagnostic logging (1026 movies found server-wide, 0 when scoped to a library known to contain real movies). The fix was hand-building TopParentIds from VirtualFolderInfo.ItemId directly, which does not reliably match what TopParentIds-based filtering expects. Now resolves each configured library via ILibraryManager.GetItemById() and queries via InternalItemsQuery.Parent instead.",
         "targetAbi": "10.11.0.0",
