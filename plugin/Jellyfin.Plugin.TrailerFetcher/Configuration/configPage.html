@@ -3,6 +3,37 @@
 <head>
     <meta charset="utf-8">
     <title>Trailer Fetcher</title>
+    <style>
+        #LastRunSummary table.trailerFetcherSummaryTable {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 32em;
+        }
+
+        #LastRunSummary table.trailerFetcherSummaryTable th,
+        #LastRunSummary table.trailerFetcherSummaryTable td {
+            padding: 0.4em 0.8em 0.4em 0;
+            text-align: left;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+        }
+
+        #LastRunSummary table.trailerFetcherSummaryTable thead th {
+            font-weight: bold;
+            border-bottom: 2px solid rgba(128, 128, 128, 0.45);
+        }
+
+        #LastRunSummary table.trailerFetcherSummaryTable td:last-child,
+        #LastRunSummary table.trailerFetcherSummaryTable th:last-child {
+            text-align: right;
+            padding-right: 0;
+        }
+
+        #LastRunSummary table.trailerFetcherSummaryTable tr.trailerFetcherSummarySection td {
+            padding-top: 1em;
+            font-weight: bold;
+            border-bottom: 2px solid rgba(128, 128, 128, 0.45);
+        }
+    </style>
 </head>
 <body>
     <div id="TrailerFetcherConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
@@ -176,50 +207,72 @@
                     }
 
                     var rows = [
-                        ['Completed', new Date(summary.completedAtUtc).toLocaleString() + (summary.dryRun ? ' (dry run)' : '')],
-                        ['Total movies in library', summary.totalMovies],
-                        ['Movies processed', summary.scanned],
-                        ['Already had trailer', summary.alreadyHadTrailer],
-                        [summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', summary.downloaded],
-                        ['No trailer found', summary.notFound]
+                        { label: 'Completed', value: new Date(summary.completedAtUtc).toLocaleString() + (summary.dryRun ? ' (dry run)' : '') },
+                        { label: 'Total movies in library', value: summary.totalMovies },
+                        { label: 'Movies processed', value: summary.scanned },
+                        { label: 'Already had trailer', value: summary.alreadyHadTrailer },
+                        { label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.downloaded },
+                        { label: 'No trailer found', value: summary.notFound }
                     ];
                     if (summary.skipped > 0) {
-                        rows.push(['Skipped (unreachable)', summary.skipped]);
+                        rows.push({ label: 'Skipped (unreachable)', value: summary.skipped });
                     }
 
                     if (summary.renamed > 0) {
-                        rows.push(['Original files renamed', summary.renamed]);
+                        rows.push({ label: 'Original files renamed', value: summary.renamed });
                     }
 
                     if (summary.migrated > 0) {
-                        rows.push(['Migrated to own folder', summary.migrated]);
+                        rows.push({ label: 'Migrated to own folder', value: summary.migrated });
                     }
 
                     if (summary.totalSeries > 0) {
-                        rows.push(['— TV series —', '']);
-                        rows.push(['Total series in library', summary.totalSeries]);
-                        rows.push(['Series processed', summary.seriesScanned]);
-                        rows.push(['Already had trailer', summary.seriesAlreadyHadTrailer]);
-                        rows.push([summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', summary.seriesDownloaded]);
-                        rows.push(['No trailer found', summary.seriesNotFound]);
+                        rows.push({ section: 'TV series' });
+                        rows.push({ label: 'Total series in library', value: summary.totalSeries });
+                        rows.push({ label: 'Series processed', value: summary.seriesScanned });
+                        rows.push({ label: 'Already had trailer', value: summary.seriesAlreadyHadTrailer });
+                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.seriesDownloaded });
+                        rows.push({ label: 'No trailer found', value: summary.seriesNotFound });
                         if (summary.seriesSkipped > 0) {
-                            rows.push(['Skipped (no folder)', summary.seriesSkipped]);
+                            rows.push({ label: 'Skipped (no folder)', value: summary.seriesSkipped });
                         }
                     }
 
                     el.innerHTML = '';
                     var table = document.createElement('table');
+                    table.className = 'trailerFetcherSummaryTable';
+
+                    var thead = document.createElement('thead');
+                    var headRow = document.createElement('tr');
+                    ['Metric', 'Value'].forEach(function (text) {
+                        var th = document.createElement('th');
+                        th.textContent = text;
+                        headRow.appendChild(th);
+                    });
+                    thead.appendChild(headRow);
+                    table.appendChild(thead);
+
+                    var tbody = document.createElement('tbody');
                     rows.forEach(function (row) {
                         var tr = document.createElement('tr');
-                        var th = document.createElement('td');
-                        th.textContent = row[0] + ':';
-                        th.style.paddingRight = '1em';
-                        var td = document.createElement('td');
-                        td.textContent = String(row[1]);
-                        tr.appendChild(th);
-                        tr.appendChild(td);
-                        table.appendChild(tr);
+                        if (row.section) {
+                            tr.className = 'trailerFetcherSummarySection';
+                            var sectionCell = document.createElement('td');
+                            sectionCell.colSpan = 2;
+                            sectionCell.textContent = row.section;
+                            tr.appendChild(sectionCell);
+                        } else {
+                            var labelCell = document.createElement('td');
+                            labelCell.textContent = row.label;
+                            var valueCell = document.createElement('td');
+                            valueCell.textContent = String(row.value);
+                            tr.appendChild(labelCell);
+                            tr.appendChild(valueCell);
+                        }
+
+                        tbody.appendChild(tr);
                     });
+                    table.appendChild(tbody);
                     el.appendChild(table);
                 }).catch(function (err) {
                     el.textContent = 'Failed to load last run summary: ' + err.message;

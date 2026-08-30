@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.4.0",
+        "changelog": "The settings page's \"Last run\" summary is now a real styled HTML table (header row, right-aligned values, a distinct section divider for TV series counts) instead of an unstyled table with no visual structure.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.4.0.zip",
+        "checksum": "0bbbeca141a43cba6d30bb7005cd2a15",
+        "timestamp": "2026-08-30T21:58:13Z"
+      },
+      {
         "version": "0.8.3.0",
         "changelog": "Fixed a title-matching bug that broke every search for \"5 Centimeters per Second\" (and would break any title genuinely starting with a number - \"12 Monkeys\", \"300\", \"8 Mile\", etc.): the scene-release-cleanup heuristic stripped any leading \"number + whitespace\" as if it were a track/episode number, with no structural signal distinguishing that from a title that just starts with a digit. Removed that overly broad rule - kept the punctuation-anchored one (\"01. \", \"01 - \", \"01_\", still needed for real scene-numbered filenames) since a genuine title essentially never has a period/dash/underscore directly after a leading number. Verified against both the exact failing title and a set of real scene-numbered filenames to confirm the legitimate case still works. This heuristic was ported verbatim from the standalone script, which likely has the same latent bug.",
         "targetAbi": "10.11.0.0",
