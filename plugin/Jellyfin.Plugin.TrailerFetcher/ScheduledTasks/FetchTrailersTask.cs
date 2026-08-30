@@ -168,7 +168,7 @@ public class FetchTrailersTask : IScheduledTask
 
         if (!MovieFileOperations.IsValidMediaFile(localPath, out var reason))
         {
-            _logger.LogWarning("Skipping '{Title}': {Reason} ({Path})", rawTitle, reason, localPath);
+            _logger.LogWarning("Skipping {Title}: {Reason} ({Path})", rawTitle, reason, localPath);
             stats.Skipped++;
             return;
         }
@@ -190,7 +190,7 @@ public class FetchTrailersTask : IScheduledTask
         var yearStr = year is not null ? $" ({year})" : string.Empty;
         var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");
 
-        _logger.LogInformation("  > using title '{Title}'", preferredTitle);
+        _logger.LogInformation("  > using title {Title}", preferredTitle);
         var trailerFilename = Path.Combine(folderPath, $"{safeTitle}-trailer.mp4");
 
         var movieDurationSec = movie.RunTimeTicks.HasValue ? movie.RunTimeTicks.Value / 10_000_000.0 : (double?)null;
@@ -225,20 +225,24 @@ public class FetchTrailersTask : IScheduledTask
             }
 
             var sourcesToTry = TrailerSources.Build(movie, titleVariants, year);
-            var logPrefix = config.DryRun ? "[DRY-RUN] " : string.Empty;
+
+            // "[DRY-RUN] " is baked into the template text itself (per branch) rather
+            // than passed as a {Prefix} value - splicing a text fragment in through a
+            // structured-logging placeholder gets it quoted on its own by the logging
+            // backend (the same class of bug fixed previously for a pluralization
+            // suffix), which reads badly for a fragment that's sometimes empty.
+            var fetchingTemplate = config.DryRun
+                ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
+                : "  > Fetching trailer via {Kind} ({Source})...";
 
             foreach (var source in sourcesToTry)
             {
                 var isSearch = source.StartsWith("ytsearch", StringComparison.Ordinal);
-                _logger.LogInformation(
-                    "  > {Prefix}Fetching trailer via {Kind} ({Source})...",
-                    logPrefix,
-                    isSearch ? "Search" : "Remote-URL",
-                    source);
+                _logger.LogInformation(fetchingTemplate, isSearch ? "Search" : "Remote-URL", source);
 
                 if (config.DryRun)
                 {
-                    _logger.LogInformation("  > [DRY-RUN] Will save as: '{Name}'", Path.GetFileName(trailerFilename));
+                    _logger.LogInformation("  > [DRY-RUN] Will save as: {Name}", Path.GetFileName(trailerFilename));
                     downloadSuccess = true;
                     break;
                 }
@@ -301,6 +305,20 @@ public class FetchTrailersTask : IScheduledTask
 
     private void LogSummary(TrailerFetchStats stats, int totalMovies, bool dryRun)
     {
+        RunSummaryStore.Save(
+            Plugin.Instance!.DataFolderPath,
+            new RunSummary(
+                DateTime.UtcNow,
+                dryRun,
+                totalMovies,
+                stats.Scanned,
+                stats.AlreadyHadTrailer,
+                stats.Downloaded,
+                stats.NotFound,
+                stats.Skipped,
+                stats.Renamed,
+                stats.Migrated));
+
         _logger.LogInformation(string.Empty);
         _logger.LogInformation("==========================================");
         _logger.LogInformation("           TRAILER SYNC SUMMARY           ");
@@ -348,18 +366,18 @@ public class FetchTrailersTask : IScheduledTask
         {
             if (!Guid.TryParse(id, out var guid))
             {
-                _logger.LogWarning("Configured library id '{Id}' is not a valid GUID, skipping it.", id);
+                _logger.LogWarning("Configured library id {Id} is not a valid GUID, skipping it.", id);
                 continue;
             }
 
             var libraryItem = _libraryManager.GetItemById(guid);
             if (libraryItem is null)
             {
-                _logger.LogWarning("Configured library id '{Id}' did not resolve to any item, skipping it.", guid);
+                _logger.LogWarning("Configured library id {Id} did not resolve to any item, skipping it.", guid);
                 continue;
             }
 
-            _logger.LogInformation("Scanning library '{Name}' ({Id})...", libraryItem.Name, guid);
+            _logger.LogInformation("Scanning library {Name}...", libraryItem.Name);
 
             var libraryMovies = _libraryManager.GetItemList(new InternalItemsQuery
             {

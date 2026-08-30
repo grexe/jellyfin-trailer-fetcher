@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.6.1.0"
+version: "0.7.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,21 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.7.0.0: First real-run fixes from live testing. Fixed a class of log-quoting bugs
+  where a value already wrapped in manual quotes in the message template got
+  double-quoted (the logging backend quotes string values by default) - e.g. a
+  library name rendering as 'library was 'Anime-Filme'". Also dropped the library's
+  GUID from that line (not useful in the UI) and fixed a related bug where a
+  DRY-RUN prefix fragment spliced in through its own placeholder got quoted on its
+  own. Tightened the yt-dlp/deno download timeout from 5 minutes to 2 and gave it a
+  clear, actionable message on failure (mentioning GitHub's release CDN
+  specifically) instead of leaving a run looking hung - a download that times out
+  no longer masks a deliberate task cancellation as an ordinary download failure,
+  either. The last run's summary (the same numbers logged as "TRAILER SYNC
+  SUMMARY") is now also persisted and shown on the settings page
+  (GET /TrailerFetcher/LastRunSummary), not just buried in the log.
+
+
   0.6.1.0: Removed the "yt-dlp executable" setting entirely - the plugin now always
   uses its own self-managed yt-dlp/deno (see 0.6.0.0), never a system installation.
   Letting that path vary would mean supporting whatever yt-dlp version/flag

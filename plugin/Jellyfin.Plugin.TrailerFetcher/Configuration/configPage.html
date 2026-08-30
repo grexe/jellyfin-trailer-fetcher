@@ -10,6 +10,11 @@
             <div class="content-primary">
                 <form id="TrailerFetcherConfigForm">
                     <div class="verticalSection">
+                        <h3 class="checkboxListLabel">Last run</h3>
+                        <div id="LastRunSummary" class="fieldDescription">Loading&hellip;</div>
+                    </div>
+
+                    <div class="verticalSection">
                         <h3 class="checkboxListLabel">Libraries to scan</h3>
                         <div id="LibrariesList" class="checkboxList">Loading libraries&hellip;</div>
                         <div class="fieldDescription">Leave all unchecked to scan every library. Only libraries actually containing movies are useful here.</div>
@@ -152,9 +157,67 @@
                 });
             }
 
+            function loadLastRunSummary() {
+                var el = document.querySelector('#LastRunSummary');
+                fetch(ApiClient.serverAddress() + '/TrailerFetcher/LastRunSummary', {
+                    headers: { 'Authorization': authHeader() }
+                }).then(function (response) {
+                    if (response.status === 204) {
+                        el.textContent = 'No run yet.';
+                        return null;
+                    }
+                    if (!response.ok) {
+                        throw new Error('Failed to load last run summary: ' + response.status);
+                    }
+                    return response.json();
+                }).then(function (summary) {
+                    if (!summary) {
+                        return;
+                    }
+
+                    var rows = [
+                        ['Completed', new Date(summary.completedAtUtc).toLocaleString() + (summary.dryRun ? ' (dry run)' : '')],
+                        ['Total movies in library', summary.totalMovies],
+                        ['Movies processed', summary.scanned],
+                        ['Already had trailer', summary.alreadyHadTrailer],
+                        [summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', summary.downloaded],
+                        ['No trailer found', summary.notFound]
+                    ];
+                    if (summary.skipped > 0) {
+                        rows.push(['Skipped (unreachable)', summary.skipped]);
+                    }
+
+                    if (summary.renamed > 0) {
+                        rows.push(['Original files renamed', summary.renamed]);
+                    }
+
+                    if (summary.migrated > 0) {
+                        rows.push(['Migrated to own folder', summary.migrated]);
+                    }
+
+                    el.innerHTML = '';
+                    var table = document.createElement('table');
+                    rows.forEach(function (row) {
+                        var tr = document.createElement('tr');
+                        var th = document.createElement('td');
+                        th.textContent = row[0] + ':';
+                        th.style.paddingRight = '1em';
+                        var td = document.createElement('td');
+                        td.textContent = String(row[1]);
+                        tr.appendChild(th);
+                        tr.appendChild(td);
+                        table.appendChild(tr);
+                    });
+                    el.appendChild(table);
+                }).catch(function (err) {
+                    el.textContent = 'Failed to load last run summary: ' + err.message;
+                });
+            }
+
             document.querySelector('#TrailerFetcherConfigPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
+                    loadLastRunSummary();
                     ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
                         document.querySelector('#RenameOriginal').checked = config.RenameOriginal;
                         document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;

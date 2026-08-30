@@ -20,10 +20,6 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 /// copy frozen at plugin-release time would go stale in weeks; fetching both lazily
 /// from their own GitHub releases keeps the plugin package itself small and each
 /// dependency independently up to date.
-///
-/// Only used when the admin leaves the "yt-dlp executable" setting empty - setting it to
-/// a specific command/path (e.g. a system-installed yt-dlp) opts back out of all of this
-/// and uses that instead, unmanaged.
 /// </summary>
 public class DependencyProvisioner
 {
@@ -172,20 +168,31 @@ public class DependencyProvisioner
         }
     }
 
+    // Bounds each HTTP attempt (connect through full body transfer) to a duration that's
+    // generous for a real ~40MB download over a modest connection, but short enough that
+    // a genuinely unreachable host (e.g. a firewall silently dropping packets to GitHub's
+    // release CDN rather than rejecting the connection) fails with a clear, timely error
+    // instead of leaving a scheduled task run looking hung.
+    private static readonly TimeSpan HttpAttemptTimeout = TimeSpan.FromMinutes(2);
+
     private async Task<bool> DownloadVerifiedAsync(string url, string destination, string assetName, string checksumUrl, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_binDir);
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromMinutes(5);
+        client.Timeout = HttpAttemptTimeout;
 
         string? expectedHash;
         try
         {
             expectedHash = await FindChecksumAsync(client, checksumUrl, assetName, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
-            _logger.LogWarning("  > Could not fetch checksum for '{Asset}' ({Error}); proceeding without verification.", assetName, e.Message);
+            _logger.LogWarning("  > Could not fetch checksum for {Asset} ({Error}); proceeding without verification.", assetName, e.Message);
             expectedHash = null;
         }
 
@@ -205,7 +212,7 @@ public class DependencyProvisioner
                 var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(File.OpenRead(tmpFile), cancellationToken).ConfigureAwait(false));
                 if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogError("  > Checksum mismatch for '{Asset}': expected {Expected}, got {Actual}.", assetName, expectedHash, actualHash);
+                    _logger.LogError("  > Checksum mismatch for {Asset}: expected {Expected}, got {Actual}.", assetName, expectedHash, actualHash);
                     File.Delete(tmpFile);
                     return false;
                 }
@@ -214,9 +221,20 @@ public class DependencyProvisioner
             File.Move(tmpFile, destination, overwrite: true);
             return true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The admin cancelled the scheduled task itself, not a timeout - propagate
+            // rather than swallowing it as "this download failed, try the next thing".
+            throw;
+        }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
         {
-            _logger.LogError("  > Failed to download '{Asset}': {Error}", assetName, e.Message);
+            var timedOut = e is TaskCanceledException;
+            _logger.LogError(
+                "  > Failed to download {Asset}: {Error}{Hint:l}",
+                assetName,
+                e.Message,
+                timedOut ? $" (timed out after {HttpAttemptTimeout.TotalSeconds:0}s - check outbound internet access from the Jellyfin server process, including to GitHub's release CDN)" : string.Empty);
             if (File.Exists(tmpFile))
             {
                 File.Delete(tmpFile);

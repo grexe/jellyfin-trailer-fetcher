@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.TrailerFetcher.Services;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
@@ -71,6 +72,19 @@ public class TrailerFetcherController : ControllerBase
             .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return Ok(libraries);
+    }
+
+    /// <summary>
+    /// Returns the outcome of the most recent "Fetch Missing Trailers" run, for the
+    /// settings page to display without digging through the log.
+    /// </summary>
+    /// <returns>The last run's summary, or 204 if the task hasn't run yet.</returns>
+    [HttpGet("LastRunSummary")]
+    public ActionResult<RunSummary> GetLastRunSummary()
+    {
+        var plugin = Plugin.Instance ?? throw new InvalidOperationException("Plugin instance is not available.");
+        var summary = RunSummaryStore.Load(plugin.DataFolderPath);
+        return summary is null ? NoContent() : Ok(summary);
     }
 
     /// <summary>

@@ -151,7 +151,7 @@ public class YtDlpClient
         if (candidates.Count == 0 && exitCode != 0)
         {
             var firstError = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
-            _logger.LogWarning("  > Source '{Source}' failed ({Error}). Trying next source...", source, firstError ?? $"exit code {exitCode}");
+            _logger.LogWarning("  > Source {Source} failed ({Error}). Trying next source...", source, firstError ?? $"exit code {exitCode}");
         }
 
         return candidates;
@@ -189,7 +189,7 @@ public class YtDlpClient
             if (downloadedFile is null)
             {
                 var firstError = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
-                _logger.LogWarning("  > No file downloaded for '{Url}' ({Error}).", url, firstError ?? "unknown error");
+                _logger.LogWarning("  > No file downloaded for {Url} ({Error}).", url, firstError ?? "unknown error");
                 return false;
             }
 
@@ -262,7 +262,7 @@ public class YtDlpClient
         catch (System.ComponentModel.Win32Exception e)
         {
             _logger.LogError(
-                "  > Could not launch yt-dlp ('{Path}'): {Error}. Is yt-dlp installed and on the server process's PATH?",
+                "  > Could not launch yt-dlp ({Path}): {Error}",
                 _ytDlpExecutable,
                 e.Message);
             return (-1, string.Empty, string.Empty);

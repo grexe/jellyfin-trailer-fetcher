@@ -117,11 +117,11 @@ public static class MovieFileOperations
         {
             if (targetFolder != folderPath)
             {
-                logger.LogInformation("  > [DRY-RUN] Would rename folder + file to: '{Title}/{Title}{Ext}'", safeTitle, safeTitle, ext);
+                logger.LogInformation("  > [DRY-RUN] Would rename folder + file to: {Title}/{Title}{Ext}", safeTitle, safeTitle, ext);
             }
             else
             {
-                logger.LogInformation("  > [DRY-RUN] Would rename original file to: '{Name}'", Path.GetFileName(targetMoviePath));
+                logger.LogInformation("  > [DRY-RUN] Would rename original file to: {Name}", Path.GetFileName(targetMoviePath));
             }
 
             return (localPath, true);
@@ -131,7 +131,7 @@ public static class MovieFileOperations
         {
             if (Directory.Exists(targetFolder))
             {
-                logger.LogWarning("  > Target folder '{Folder}' already exists. Skipping folder rename.", Path.GetFileName(targetFolder));
+                logger.LogWarning("  > Target folder {Folder} already exists. Skipping folder rename.", Path.GetFileName(targetFolder));
                 targetFolder = folderPath;
                 targetMoviePath = Path.Combine(targetFolder, $"{safeTitle}{ext}");
             }
@@ -140,13 +140,13 @@ public static class MovieFileOperations
                 try
                 {
                     Directory.Move(folderPath, targetFolder);
-                    logger.LogInformation("  > Folder renamed to: '{Folder}'", Path.GetFileName(targetFolder));
+                    logger.LogInformation("  > Folder renamed to: {Folder}", Path.GetFileName(targetFolder));
                     localPath = Path.Combine(targetFolder, Path.GetFileName(localPath));
                     folderPath = targetFolder;
                 }
                 catch (IOException e)
                 {
-                    logger.LogError("  > Failed to rename folder '{Folder}': {Error}", folderPath, e.Message);
+                    logger.LogError("  > Failed to rename folder {Folder}: {Error}", folderPath, e.Message);
                     targetMoviePath = Path.Combine(folderPath, $"{safeTitle}{ext}");
                 }
             }
@@ -159,19 +159,19 @@ public static class MovieFileOperations
 
         if (File.Exists(targetMoviePath))
         {
-            logger.LogWarning("  > Target file '{Name}' already exists. Skipping rename.", Path.GetFileName(targetMoviePath));
+            logger.LogWarning("  > Target file {Name} already exists. Skipping rename.", Path.GetFileName(targetMoviePath));
             return (localPath, false);
         }
 
         try
         {
             File.Move(localPath, targetMoviePath);
-            logger.LogInformation("  > Original file renamed to: '{Name}'", Path.GetFileName(targetMoviePath));
+            logger.LogInformation("  > Original file renamed to: {Name}", Path.GetFileName(targetMoviePath));
             return (targetMoviePath, true);
         }
         catch (IOException e)
         {
-            logger.LogError("  > Failed to rename file for '{Title}': {Error}", safeTitle, e.Message);
+            logger.LogError("  > Failed to rename file for {Title}: {Error}", safeTitle, e.Message);
             return (localPath, false);
         }
     }
@@ -225,7 +225,7 @@ public static class MovieFileOperations
         }
         catch (IOException e)
         {
-            logger.LogWarning("  > Could not list '{Dir}' for migration: {Error}", currentDir, e.Message);
+            logger.LogWarning("  > Could not list {Dir} for migration: {Error}", currentDir, e.Message);
             return (localPath, false);
         }
 
@@ -240,7 +240,7 @@ public static class MovieFileOperations
 
         if (dryRun)
         {
-            logger.LogInformation("  > [DRY-RUN] Would move into own folder '{Stem}/': {Files}", movieStem, string.Join(", ", filesToMove));
+            logger.LogInformation("  > [DRY-RUN] Would move into own folder {Stem}/: {Files}", movieStem, string.Join(", ", filesToMove));
             return (localPath, true);
         }
 
@@ -250,7 +250,7 @@ public static class MovieFileOperations
         }
         catch (IOException e)
         {
-            logger.LogError("  > Failed to create folder '{Dir}': {Error}", targetDir, e.Message);
+            logger.LogError("  > Failed to create folder {Dir}: {Error}", targetDir, e.Message);
             return (localPath, false);
         }
 
@@ -262,7 +262,7 @@ public static class MovieFileOperations
             var dst = Path.Combine(targetDir, name);
             if (File.Exists(dst))
             {
-                logger.LogWarning("  > Migration target '{Dst}' already exists, leaving '{Src}' in place.", dst, src);
+                logger.LogWarning("  > Migration target {Dst} already exists, leaving {Src} in place.", dst, src);
                 continue;
             }
 
@@ -277,13 +277,13 @@ public static class MovieFileOperations
             }
             catch (IOException e)
             {
-                logger.LogError("  > Failed to move '{Src}' to '{Dst}': {Error}", src, dst, e.Message);
+                logger.LogError("  > Failed to move {Src} to {Dst}: {Error}", src, dst, e.Message);
             }
         }
 
         if (movedCount > 0)
         {
-            logger.LogInformation("  > Moved {Count} file(s) into own folder: '{Stem}/'", movedCount, movieStem);
+            logger.LogInformation("  > Moved {Count} file(s) into own folder: {Stem}/", movedCount, movieStem);
         }
 
         return (newLocalPath, movedCount > 0);
