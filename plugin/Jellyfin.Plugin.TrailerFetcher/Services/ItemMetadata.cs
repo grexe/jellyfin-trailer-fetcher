@@ -1,35 +1,40 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities;
 
 namespace Jellyfin.Plugin.TrailerFetcher.Services;
 
 /// <summary>
-/// Resolves a movie's display title, title variants (for search/matching), and release
-/// year from its Jellyfin metadata and its file's own name - ported from the standalone
-/// script's resolve_movie_titles/resolve_movie_year. Unlike the standalone script (an
+/// Resolves a media item's display title, title variants (for search/matching), and
+/// release year from its Jellyfin metadata and its own filename/folder name - ported
+/// from the standalone script's resolve_movie_titles/resolve_movie_year. Works on
+/// <see cref="BaseItem"/> - Name, OriginalTitle, ProductionYear, and PremiereDate all
+/// come from there - so the same logic applies unchanged to a movie (where the local
+/// path is its file) and a TV series (where it's the series' own folder); the
+/// folder-name-vs-metadata trust heuristic is just as meaningful for a mismatched
+/// series folder as for a mismatched movie filename. Unlike the standalone script (an
 /// external process talking to the Jellyfin HTTP API over a possibly-translated NAS
 /// path), this runs inside the server itself: the local path is simply
-/// <c>movie.Path</c>, no path mapping needed.
+/// <c>item.Path</c>, no path mapping needed.
 /// </summary>
-public static class MovieMetadata
+public static class ItemMetadata
 {
     /// <summary>
-    /// Determine the movie's release year. Prefers the year embedded in the file's own
-    /// name over Jellyfin's ProductionYear/PremiereDate when the two disagree - a movie
-    /// correctly named "Chang An (2023).mkv" on disk should not get treated as a 2012
-    /// film just because Jellyfin matched it to a same-named 2012 film's metadata.
+    /// Determine the item's release year. Prefers the year embedded in the file/folder's
+    /// own name over Jellyfin's ProductionYear/PremiereDate when the two disagree - a
+    /// movie correctly named "Chang An (2023).mkv" on disk should not get treated as a
+    /// 2012 film just because Jellyfin matched it to a same-named 2012 film's metadata.
     /// </summary>
-    public static string? ResolveYear(Movie movie, string localPath)
+    public static string? ResolveYear(BaseItem item, string localPath)
     {
         var fileStem = localPath.Length > 0 ? Path.GetFileNameWithoutExtension(localPath) : string.Empty;
         var (_, fileYear) = TitleMatching.CleanMediaTitle(fileStem);
 
-        string? metadataYear = movie.ProductionYear?.ToString();
-        if (string.IsNullOrEmpty(metadataYear) && movie.PremiereDate.HasValue)
+        string? metadataYear = item.ProductionYear?.ToString();
+        if (string.IsNullOrEmpty(metadataYear) && item.PremiereDate.HasValue)
         {
-            metadataYear = movie.PremiereDate.Value.Year.ToString();
+            metadataYear = item.PremiereDate.Value.Year.ToString();
         }
 
         if (!string.IsNullOrEmpty(fileYear) && !string.IsNullOrEmpty(metadataYear) && fileYear != metadataYear)
@@ -47,7 +52,7 @@ public static class MovieMetadata
             return fileYear;
         }
 
-        var (_, nameYear) = TitleMatching.CleanMediaTitle(movie.Name);
+        var (_, nameYear) = TitleMatching.CleanMediaTitle(item.Name);
         return nameYear;
     }
 
@@ -55,10 +60,10 @@ public static class MovieMetadata
     /// Determine the preferred title for naming/renaming (honoring Latin locale over
     /// CJK/non-Latin) and collect all title variants for search and trailer filtering.
     /// </summary>
-    public static (string PreferredTitle, List<string> TitleVariants) ResolveTitles(Movie movie, string localPath)
+    public static (string PreferredTitle, List<string> TitleVariants) ResolveTitles(BaseItem item, string localPath)
     {
-        var rawName = string.IsNullOrEmpty(movie.Name) ? "Unknown" : movie.Name;
-        var originalTitle = movie.OriginalTitle ?? string.Empty;
+        var rawName = string.IsNullOrEmpty(item.Name) ? "Unknown" : item.Name;
+        var originalTitle = item.OriginalTitle ?? string.Empty;
         var fileStem = localPath.Length > 0 ? Path.GetFileNameWithoutExtension(localPath) : string.Empty;
 
         var (cleanedName, _) = TitleMatching.CleanMediaTitle(rawName);
@@ -100,7 +105,7 @@ public static class MovieMetadata
         if (distrustMetadata)
         {
             // A wrong Name usually means Jellyfin matched this item to an entirely
-            // different movie, so OriginalTitle and the raw Name are from that same
+            // different item, so OriginalTitle and the raw Name are from that same
             // wrong match too and can't be trusted either as fallback candidates.
             orderedCandidates = [preferredTitle];
         }

@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.1.0",
+        "changelog": "Refactor - per feedback, verified the movie/series duplication from 0.8.0.0 and found the SeriesMetadata.cs/SeriesTrailerSources.cs title/year-resolution and source-query-building logic was byte-for-byte identical to MovieMetadata.cs/TrailerSources.cs aside from variable names and comments (both are plain BaseItem lookups with nothing movie- or series-specific in them), so there was no actual behavior to isolate by keeping them separate - only a maintenance burden of every future fix needing to be applied twice. Merged them into one shared Services/ItemMetadata.cs and widened TrailerSources.Build to take a BaseItem. ProcessMovieAsync/ProcessSeriesAsync in FetchTrailersTask.cs stay separate, since what they actually do genuinely differs (rename/migrate + file-specific validity checking for movies vs. a plain folder-exists check for series). No functional change.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.1.0.zip",
+        "checksum": "3579558f43f9efc1018283c0f590be79",
+        "timestamp": "2026-08-30T20:47:11Z"
+      },
+      {
         "version": "0.8.0.0",
         "changelog": "Added TV series support - series-level trailers only (Services/SeriesMetadata.cs, Services/SeriesTrailerSources.cs), sharing the same library selection as movies but otherwise deliberately kept as a fully separate code path from the movie logic rather than a shared generic one, so a change intended for one media type can't silently affect the other. Checked Jellyfin's actual entity model first: Series has its own LocalTrailers/RemoteTrailers (same shape as Movie), but Season has no equivalent property at all - despite Jellyfin's docs showing a trailers/ folder example nested under a season folder - so season-level trailers aren't implemented until that's verified against a real library. No rename/migrate step for series: a series always already lives in its own dedicated folder. The settings page's \"Last run\" summary and the main log's TRAILER SYNC SUMMARY both show series counts alongside the movie ones now.",
         "targetAbi": "10.11.0.0",

@@ -1,23 +1,25 @@
 using System.Collections.Generic;
 using System.Linq;
-using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities;
 
 namespace Jellyfin.Plugin.TrailerFetcher.Services;
 
 /// <summary>
-/// Builds the ordered list of sources to try for a movie's trailer: official
+/// Builds the ordered list of sources to try for a media item's trailer: official
 /// RemoteTrailers first, then a multi-stage set of YouTube searches (full title + year,
 /// main title + year, broad query, native-language search for non-Latin titles). Ported
-/// from the standalone script's get_trailer_sources.
+/// from the standalone script's get_trailer_sources. Works on <see cref="BaseItem"/> -
+/// RemoteTrailers is declared there - so the same query-building logic applies
+/// unchanged to a movie or a TV series.
 /// </summary>
 public static class TrailerSources
 {
     /// <summary>Build the ordered list of sources: direct YouTube URLs first, then "ytsearch5:&lt;query&gt;" strings.</summary>
-    public static List<string> Build(Movie movie, List<string> titleVariants, string? year)
+    public static List<string> Build(BaseItem item, List<string> titleVariants, string? year)
     {
         var sourcesToTry = new List<string>();
 
-        foreach (var rt in movie.RemoteTrailers)
+        foreach (var rt in item.RemoteTrailers)
         {
             var url = rt.Url;
             if (!string.IsNullOrEmpty(url) &&

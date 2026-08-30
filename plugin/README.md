@@ -122,14 +122,18 @@ the API, or just placed there and attached to the series as a whole regardless, 
 confirmed yet, so season-level trailers aren't implemented until that's verified against
 a real library.
 
-`Services/SeriesMetadata.cs` and `Services/SeriesTrailerSources.cs` are deliberately
-separate implementations from `MovieMetadata`/`TrailerSources` rather than a shared
-generic one, even though the logic looks similar - a change intended for one media type
-shouldn't be able to silently affect the other. Only the parts that were already fully
-generic before TV support existed (`TitleMatching`, `TrailerCandidateFilter`,
-`YtDlpClient`) are shared. A series also always already lives in its own dedicated
-folder, so there's no rename/migrate step for it - that's specifically a movies problem
-(see jellyfin/jellyfin#10077 above).
+Title/year resolution and source-query building (`Services/ItemMetadata.cs`,
+`Services/TrailerSources.cs`) are shared between movies and series - both operate on
+`BaseItem` (Name, OriginalTitle, ProductionYear, RemoteTrailers, ...) with no movie- or
+series-specific behavior baked in, so a first cut that duplicated them into
+movie-specific and series-specific copies (verified byte-for-byte identical aside from
+variable names and comments) was refactored back into one shared implementation each -
+keeping the duplicates would have meant every future fix to either needing to be applied
+twice. What's kept genuinely separate is what actually differs:
+`ProcessMovieAsync`/`ProcessSeriesAsync` in `FetchTrailersTask.cs` are distinct
+orchestration methods, since a movie additionally needs `MovieFileOperations` for
+rename/migrate (see jellyfin/jellyfin#10077 above) and file-specific validity checking,
+neither of which a series - always already in its own dedicated folder - needs at all.
 
 ## Installing for testing
 

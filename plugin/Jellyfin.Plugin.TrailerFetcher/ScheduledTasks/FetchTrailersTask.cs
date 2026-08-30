@@ -23,14 +23,15 @@ namespace Jellyfin.Plugin.TrailerFetcher.ScheduledTasks;
 /// Scheduled task that finds and downloads missing local trailers for movies and TV
 /// series. For each item without one: tries the official RemoteTrailers first, then a
 /// multi-stage set of YouTube searches, downloads the first candidate that passes
-/// duration/title filtering via yt-dlp. Movies (see <see cref="TrailerSources"/>,
-/// <see cref="MovieMetadata"/>) additionally support renaming the original file and/or
-/// migrating it into its own folder - required for Jellyfin to recognize a local
-/// trailer at all when movies share a flat folder
-/// (see https://github.com/jellyfin/jellyfin/issues/10077). Series (see
-/// <see cref="SeriesTrailerSources"/>, <see cref="SeriesMetadata"/>) don't need that:
-/// a series always already lives in its own dedicated folder. The movie and series
-/// paths are deliberately independent rather than sharing a generic "item" abstraction.
+/// duration/title filtering via yt-dlp. Title/year resolution and source-query building
+/// (<see cref="ItemMetadata"/>, <see cref="TrailerSources"/>) are shared between movies
+/// and series - both are plain <see cref="BaseItem"/> lookups with no movie- or
+/// series-specific behavior. What genuinely differs is kept in separate orchestration
+/// methods: movies additionally support renaming the original file and/or migrating it
+/// into its own folder (<see cref="MovieFileOperations"/>) - required for Jellyfin to
+/// recognize a local trailer at all when movies share a flat folder
+/// (see https://github.com/jellyfin/jellyfin/issues/10077) - while a series always
+/// already lives in its own dedicated folder, so that step doesn't apply to it at all.
 /// </summary>
 public class FetchTrailersTask : IScheduledTask
 {
@@ -197,7 +198,7 @@ public class FetchTrailersTask : IScheduledTask
 
         stats.Scanned++;
 
-        var (preferredTitle, titleVariants) = MovieMetadata.ResolveTitles(movie, localPath);
+        var (preferredTitle, titleVariants) = ItemMetadata.ResolveTitles(movie, localPath);
         var folderPath = Path.GetDirectoryName(localPath) ?? string.Empty;
 
         if (stats.LastDir != folderPath)
@@ -208,7 +209,7 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation("Processing movie file: {Name} ...", Path.GetFileName(localPath));
 
-        var year = MovieMetadata.ResolveYear(movie, localPath);
+        var year = ItemMetadata.ResolveYear(movie, localPath);
         var yearStr = year is not null ? $" ({year})" : string.Empty;
         var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");
 
@@ -327,12 +328,16 @@ public class FetchTrailersTask : IScheduledTask
 
     /// <summary>
     /// Processes a single TV series: tries its official RemoteTrailers, then a
-    /// multi-stage YouTube search (see <see cref="SeriesTrailerSources"/>), same
-    /// duration/title filtering as movies. Deliberately kept separate from
-    /// ProcessMovieAsync rather than sharing a generic "item" path - see
-    /// <see cref="SeriesMetadata"/> for why. No rename/migrate step: a series always
-    /// already lives in its own dedicated folder, so the "own folder" problem that
-    /// drives that logic for movies (jellyfin/jellyfin#10077) doesn't apply here.
+    /// multi-stage YouTube search (see <see cref="TrailerSources"/>), same duration/
+    /// title filtering as movies. Title/year resolution and source-query building are
+    /// shared with ProcessMovieAsync via <see cref="ItemMetadata"/>/
+    /// <see cref="TrailerSources"/> (both are plain BaseItem lookups, no movie- or
+    /// series-specific behavior); kept as a separate method rather than a shared "item"
+    /// loop because the actual steps genuinely differ - no rename/migrate here, since a
+    /// series always already lives in its own dedicated folder, so the "own folder"
+    /// problem that drives that logic for movies (jellyfin/jellyfin#10077) doesn't
+    /// apply, and validity is a folder-exists check rather than
+    /// <see cref="MovieFileOperations.IsValidMediaFile"/>.
     /// </summary>
     private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)
     {
@@ -351,8 +356,8 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation("*** Processing series: {Name}", PathDisplay.Relative(seriesPath, libraryRoot));
 
-        var (preferredTitle, titleVariants) = SeriesMetadata.ResolveTitles(series, seriesPath);
-        var year = SeriesMetadata.ResolveYear(series, seriesPath);
+        var (preferredTitle, titleVariants) = ItemMetadata.ResolveTitles(series, seriesPath);
+        var year = ItemMetadata.ResolveYear(series, seriesPath);
         var yearStr = year is not null ? $" ({year})" : string.Empty;
         var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");
 
@@ -375,7 +380,7 @@ public class FetchTrailersTask : IScheduledTask
             return;
         }
 
-        var sourcesToTry = SeriesTrailerSources.Build(series, titleVariants, year);
+        var sourcesToTry = TrailerSources.Build(series, titleVariants, year);
         var fetchingTemplate = config.DryRun
             ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
             : "  > Fetching trailer via {Kind} ({Source})...";
