@@ -317,7 +317,10 @@ public class FetchTrailersTask : IScheduledTask
                         break;
                     }
 
-                    _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+                    if (config.VerboseLogging)
+                    {
+                        _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+                    }
                 }
 
                 if (accepted is not null)
@@ -458,7 +461,10 @@ public class FetchTrailersTask : IScheduledTask
                     break;
                 }
 
-                _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+                if (config.VerboseLogging)
+                {
+                    _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+                }
             }
 
             if (accepted is not null)

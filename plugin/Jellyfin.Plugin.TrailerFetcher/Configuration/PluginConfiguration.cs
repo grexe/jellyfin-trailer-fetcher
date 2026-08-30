@@ -47,6 +47,7 @@ public class PluginConfiguration : BasePluginConfiguration
         CookiesFilePath = string.Empty;
         MaxTrailerDurationSeconds = 300;
         LibraryIds = Array.Empty<string>();
+        VerboseLogging = false;
     }
 
     /// <summary>
@@ -96,4 +97,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// An empty array means every library is scanned.
     /// </summary>
     public string[] LibraryIds { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to log each rejected search candidate's
+    /// specific reason ("Title mismatch: ...", "Duration &gt; 300s: ...", ...). Off by
+    /// default: a movie/series that needs several fallback search stages before
+    /// finding (or giving up on) a trailer can generate dozens of these lines, which
+    /// buries the small number of lines that actually matter for a normal run (what
+    /// was searched, what was found or not). Each search stage's overall outcome is
+    /// still always logged either way - this only affects the per-candidate detail
+    /// within a stage, which is mainly useful when actively diagnosing why a specific
+    /// movie/series isn't finding a trailer it should.
+    /// </summary>
+    public bool VerboseLogging { get; set; }
 }

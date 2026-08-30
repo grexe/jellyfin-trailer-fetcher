@@ -58,6 +58,14 @@
                         <div class="fieldDescription">Log what a manually triggered run would do, without downloading, renaming, or moving anything.</div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="VerboseLogging" name="VerboseLogging" type="checkbox" is="emby-checkbox" />
+                            <span>Verbose logging</span>
+                        </label>
+                        <div class="fieldDescription">Log each rejected search candidate's specific reason ("Title mismatch: ...", "Duration &gt; 300s: ..."). Off by default to keep a normal run's log readable - a movie/series needing several fallback searches can otherwise generate dozens of these lines. Turn on when diagnosing why a specific movie/series isn't finding a trailer it should.</div>
+                    </div>
+
                     <div class="inputContainer">
                         <label class="inputLabel">Cookies file</label>
                         <div id="CookiesStatus" class="fieldDescription">No cookies file uploaded.</div>
@@ -333,6 +341,7 @@
                         document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;
                         document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
                         document.querySelector('#DryRun').checked = config.DryRun;
+                        document.querySelector('#VerboseLogging').checked = config.VerboseLogging;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         updateCookiesStatus(config.CookiesFilePath);
                         loadLibraries(config.LibraryIds || []);
@@ -403,6 +412,7 @@
                         config.MigrateToFolders = document.querySelector('#MigrateToFolders').value;
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;
+                        config.VerboseLogging = document.querySelector('#VerboseLogging').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
                         config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
                             return el.value;
