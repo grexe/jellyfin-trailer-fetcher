@@ -4,10 +4,12 @@
 
 # Trailer Fetcher (Jellyfin plugin)
 
-Finds and downloads missing local movie trailers from YouTube via `yt-dlp`, running
-natively in-process on the Jellyfin server, with sequel-aware title matching and
-automatic folder migration - Jellyfin only recognizes a local trailer file when the
-movie has its own dedicated folder ([jellyfin/jellyfin#10077](https://github.com/jellyfin/jellyfin/issues/10077)).
+Finds and downloads missing local trailers - for movies and TV series - from YouTube
+via `yt-dlp`, running natively in-process on the Jellyfin server, with sequel-aware
+title matching and automatic folder migration for movies - Jellyfin only recognizes a
+local trailer file when the movie has its own dedicated folder
+([jellyfin/jellyfin#10077](https://github.com/jellyfin/jellyfin/issues/10077)); a
+series always already has one, so that step doesn't apply there.
 
 This is a from-scratch C# port of the standalone
 [`jellyfin-trailer-fetcher`](https://codeberg.org/grexe/jellyfin-trailer-fetcher/src/branch/main)
@@ -64,8 +66,9 @@ the plugin sticks with `System.Diagnostics.Process` directly.
 | Cookie file upload | ✅ Working |
 | Per-library scan scoping | ✅ Working |
 | Dedicated log file | ✅ Working |
-| Trailer search/filter/download | ✅ Working - no container customization needed, see Requirements |
-| Folder migration & rename | ✅ Working |
+| Trailer search/filter/download (movies) | ✅ Working - no container customization needed, see Requirements |
+| Folder migration & rename (movies) | ✅ Working |
+| Trailer search/filter/download (TV series) | ✅ Working - series-level only, see TV series below |
 
 ## Requirements
 
@@ -107,6 +110,26 @@ yt-dlp directly. It would also mean deploying and networking a second container,
 its downloads folder onto the same volume as the media library, and configuring cookies
 separately from this plugin's own cookie upload - real setup friction for what the
 self-managed-binary approach above already solves with zero extra services.
+
+## TV series
+
+Series-level trailers only, for now - checked Jellyfin's actual entity model before
+building anything: `Series` has its own `LocalTrailers`/`RemoteTrailers`, the same
+shape as `Movie`, so it maps cleanly onto the existing approach. `Season` does not
+expose an equivalent property at all, even though Jellyfin's docs show a `trailers/`
+folder example nested under a season folder - whether that's actually reachable through
+the API, or just placed there and attached to the series as a whole regardless, isn't
+confirmed yet, so season-level trailers aren't implemented until that's verified against
+a real library.
+
+`Services/SeriesMetadata.cs` and `Services/SeriesTrailerSources.cs` are deliberately
+separate implementations from `MovieMetadata`/`TrailerSources` rather than a shared
+generic one, even though the logic looks similar - a change intended for one media type
+shouldn't be able to silently affect the other. Only the parts that were already fully
+generic before TV support existed (`TitleMatching`, `TrailerCandidateFilter`,
+`YtDlpClient`) are shared. A series also always already lives in its own dedicated
+folder, so there's no rename/migrate step for it - that's specifically a movies problem
+(see jellyfin/jellyfin#10077 above).
 
 ## Installing for testing
 

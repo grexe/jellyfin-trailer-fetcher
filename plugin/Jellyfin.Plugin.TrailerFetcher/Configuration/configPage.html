@@ -17,7 +17,7 @@
                     <div class="verticalSection">
                         <h3 class="checkboxListLabel">Libraries to scan</h3>
                         <div id="LibrariesList" class="checkboxList">Loading libraries&hellip;</div>
-                        <div class="fieldDescription">Leave all unchecked to scan every library. Only libraries actually containing movies are useful here.</div>
+                        <div class="fieldDescription">Leave all unchecked to scan every library. Applies to both movies and TV series - only libraries actually containing them are useful here. Renaming and folder migration below only apply to movies; a TV series always already has its own folder.</div>
                     </div>
 
                     <div class="checkboxContainer checkboxContainer-withDescription">
@@ -193,6 +193,18 @@
 
                     if (summary.migrated > 0) {
                         rows.push(['Migrated to own folder', summary.migrated]);
+                    }
+
+                    if (summary.totalSeries > 0) {
+                        rows.push(['— TV series —', '']);
+                        rows.push(['Total series in library', summary.totalSeries]);
+                        rows.push(['Series processed', summary.seriesScanned]);
+                        rows.push(['Already had trailer', summary.seriesAlreadyHadTrailer]);
+                        rows.push([summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', summary.seriesDownloaded]);
+                        rows.push(['No trailer found', summary.seriesNotFound]);
+                        if (summary.seriesSkipped > 0) {
+                            rows.push(['Skipped (no folder)', summary.seriesSkipped]);
+                        }
                     }
 
                     el.innerHTML = '';

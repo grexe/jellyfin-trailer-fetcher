@@ -10,6 +10,7 @@ using Jellyfin.Plugin.TrailerFetcher.Configuration;
 using Jellyfin.Plugin.TrailerFetcher.Services;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Globalization;
@@ -19,13 +20,17 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.TrailerFetcher.ScheduledTasks;
 
 /// <summary>
-/// Scheduled task that finds and downloads missing local movie trailers. For each movie
-/// without one: tries the official RemoteTrailers first, then a multi-stage set of
-/// YouTube searches (see <see cref="TrailerSources"/>), downloads the first candidate
-/// that passes duration/title filtering (see <see cref="TrailerCandidateFilter"/>) via
-/// yt-dlp, and optionally renames the original file and/or migrates the movie into its
-/// own folder - required for Jellyfin to recognize a local trailer at all
-/// (see https://github.com/jellyfin/jellyfin/issues/10077).
+/// Scheduled task that finds and downloads missing local trailers for movies and TV
+/// series. For each item without one: tries the official RemoteTrailers first, then a
+/// multi-stage set of YouTube searches, downloads the first candidate that passes
+/// duration/title filtering via yt-dlp. Movies (see <see cref="TrailerSources"/>,
+/// <see cref="MovieMetadata"/>) additionally support renaming the original file and/or
+/// migrating it into its own folder - required for Jellyfin to recognize a local
+/// trailer at all when movies share a flat folder
+/// (see https://github.com/jellyfin/jellyfin/issues/10077). Series (see
+/// <see cref="SeriesTrailerSources"/>, <see cref="SeriesMetadata"/>) don't need that:
+/// a series always already lives in its own dedicated folder. The movie and series
+/// paths are deliberately independent rather than sharing a generic "item" abstraction.
 /// </summary>
 public class FetchTrailersTask : IScheduledTask
 {
@@ -84,8 +89,11 @@ public class FetchTrailersTask : IScheduledTask
         var movies = libraryIds.Length > 0
             ? GetMoviesInSelectedLibraries(libraryIds)
             : GetAllMovies();
+        var series = libraryIds.Length > 0
+            ? GetSeriesInSelectedLibraries(libraryIds)
+            : GetAllSeries();
 
-        _logger.LogInformation("Found {Count} movie(s) to process.", movies.Count);
+        _logger.LogInformation("Found {MovieCount} movie(s) and {SeriesCount} series to process.", movies.Count, series.Count);
 
         string? ffmpegDir = null;
         try
@@ -99,25 +107,34 @@ public class FetchTrailersTask : IScheduledTask
 
         var ytDlp = await BuildYtDlpClientAsync(config, ffmpegDir, cancellationToken).ConfigureAwait(false);
         var stats = new TrailerFetchStats();
+        var totalItems = movies.Count + series.Count;
 
         for (var i = 0; i < movies.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await ProcessMovieAsync(movies[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
-            progress.Report((i + 1) * 100.0 / movies.Count);
+            progress.Report((i + 1) * 100.0 / totalItems);
         }
 
-        LogSummary(stats, movies.Count, config.DryRun);
+        for (var i = 0; i < series.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await ProcessSeriesAsync(series[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+            progress.Report((movies.Count + i + 1) * 100.0 / totalItems);
+        }
 
-        // Trigger a single library scan (not one per movie) so Jellyfin picks up every
-        // newly downloaded trailer file, and any moved/migrated paths, in one pass.
+        LogSummary(stats, movies.Count, series.Count, config.DryRun);
+
+        // Trigger a single library scan (not one per movie/series) so Jellyfin picks up
+        // every newly downloaded trailer file, and any moved/migrated paths, in one pass.
         if (config.TriggerLibraryScan && !config.DryRun)
         {
-            if (stats.Downloaded > 0 || stats.Migrated > 0)
+            var downloaded = stats.Downloaded + stats.SeriesDownloaded;
+            if (downloaded > 0 || stats.Migrated > 0)
             {
                 _logger.LogInformation(
                     "Triggering a Jellyfin library scan to pick up {Downloaded} new trailer(s) and {Migrated} migrated movie(s)...",
-                    stats.Downloaded,
+                    downloaded,
                     stats.Migrated);
                 _libraryManager.QueueLibraryScan();
             }
@@ -308,7 +325,115 @@ public class FetchTrailersTask : IScheduledTask
         }
     }
 
-    private void LogSummary(TrailerFetchStats stats, int totalMovies, bool dryRun)
+    /// <summary>
+    /// Processes a single TV series: tries its official RemoteTrailers, then a
+    /// multi-stage YouTube search (see <see cref="SeriesTrailerSources"/>), same
+    /// duration/title filtering as movies. Deliberately kept separate from
+    /// ProcessMovieAsync rather than sharing a generic "item" path - see
+    /// <see cref="SeriesMetadata"/> for why. No rename/migrate step: a series always
+    /// already lives in its own dedicated folder, so the "own folder" problem that
+    /// drives that logic for movies (jellyfin/jellyfin#10077) doesn't apply here.
+    /// </summary>
+    private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)
+    {
+        var rawTitle = string.IsNullOrEmpty(series.Name) ? "Unknown" : series.Name;
+        var seriesPath = series.Path;
+
+        if (string.IsNullOrEmpty(seriesPath) || !Directory.Exists(seriesPath))
+        {
+            _logger.LogWarning("Skipping series {Title}: folder not found ({Path})", rawTitle, seriesPath);
+            stats.SeriesSkipped++;
+            return;
+        }
+
+        var libraryRoot = series.GetTopParent()?.Path;
+        stats.SeriesScanned++;
+
+        _logger.LogInformation("*** Processing series: {Name}", PathDisplay.Relative(seriesPath, libraryRoot));
+
+        var (preferredTitle, titleVariants) = SeriesMetadata.ResolveTitles(series, seriesPath);
+        var year = SeriesMetadata.ResolveYear(series, seriesPath);
+        var yearStr = year is not null ? $" ({year})" : string.Empty;
+        var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");
+
+        _logger.LogInformation("  > using title {Title}", preferredTitle);
+        var trailerFilename = Path.Combine(seriesPath, $"{safeTitle}-trailer.mp4");
+
+        var trailerCandidates = new[]
+        {
+            trailerFilename,
+            Path.Combine(seriesPath, $"{safeTitle}-trailer.mkv"),
+            Path.Combine(seriesPath, "trailer.mp4"),
+            Path.Combine(seriesPath, "trailer.mkv")
+        };
+        var alreadyHadTrailer = series.LocalTrailers.Count > 0 || trailerCandidates.Any(File.Exists);
+
+        if (alreadyHadTrailer)
+        {
+            _logger.LogInformation("  > Trailer already exists, skipping.");
+            stats.SeriesAlreadyHadTrailer++;
+            return;
+        }
+
+        var sourcesToTry = SeriesTrailerSources.Build(series, titleVariants, year);
+        var fetchingTemplate = config.DryRun
+            ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
+            : "  > Fetching trailer via {Kind} ({Source})...";
+        var downloadSuccess = false;
+
+        foreach (var source in sourcesToTry)
+        {
+            var isSearch = source.StartsWith("ytsearch", StringComparison.Ordinal);
+            _logger.LogInformation(fetchingTemplate, isSearch ? "Search" : "Remote-URL", source);
+
+            if (config.DryRun)
+            {
+                _logger.LogInformation("  > [DRY-RUN] Will save as: {Name}", Path.GetFileName(trailerFilename));
+                downloadSuccess = true;
+                break;
+            }
+
+            var candidates = await ytDlp.ProbeAsync(source, cancellationToken).ConfigureAwait(false);
+
+            YtDlpCandidate? accepted = null;
+            foreach (var candidate in candidates)
+            {
+                // No single "runtime" to compare a series trailer against, unlike a
+                // movie - only the universal duration cap applies.
+                if (TrailerCandidateFilter.Accept(candidate, titleVariants, movieDurationSeconds: null, isSearch, config.MaxTrailerDurationSeconds, out var rejectReason))
+                {
+                    accepted = candidate;
+                    break;
+                }
+
+                _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+            }
+
+            if (accepted is not null)
+            {
+                downloadSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
+                if (downloadSuccess)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                _logger.LogWarning("  > No suitable trailer found for source ({Source}).", source);
+            }
+        }
+
+        if (downloadSuccess)
+        {
+            stats.SeriesDownloaded++;
+        }
+        else
+        {
+            stats.SeriesNotFound++;
+        }
+    }
+
+    private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun)
     {
         RunSummaryStore.Save(
             Plugin.Instance!.DataFolderPath,
@@ -322,7 +447,13 @@ public class FetchTrailersTask : IScheduledTask
                 stats.NotFound,
                 stats.Skipped,
                 stats.Renamed,
-                stats.Migrated));
+                stats.Migrated,
+                totalSeries,
+                stats.SeriesScanned,
+                stats.SeriesAlreadyHadTrailer,
+                stats.SeriesDownloaded,
+                stats.SeriesNotFound,
+                stats.SeriesSkipped));
 
         _logger.LogInformation(string.Empty);
         _logger.LogInformation("==========================================");
@@ -346,6 +477,20 @@ public class FetchTrailersTask : IScheduledTask
         if (stats.Migrated > 0)
         {
             _logger.LogInformation("  Migrated to Own Folder  : {Count}", stats.Migrated);
+        }
+
+        if (totalSeries > 0)
+        {
+            _logger.LogInformation("  ---------------- TV Series --------------");
+            _logger.LogInformation("  Total Series in Library : {Count}", totalSeries);
+            _logger.LogInformation("  Series Processed        : {Count}", stats.SeriesScanned);
+            _logger.LogInformation("  Already had Trailer     : {Count}", stats.SeriesAlreadyHadTrailer);
+            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", stats.SeriesDownloaded);
+            _logger.LogInformation("  No Trailer Found        : {Count}", stats.SeriesNotFound);
+            if (stats.SeriesSkipped > 0)
+            {
+                _logger.LogInformation("  Skipped (No Folder)     : {Count}", stats.SeriesSkipped);
+            }
         }
 
         _logger.LogInformation("==========================================");
@@ -415,6 +560,61 @@ public class FetchTrailersTask : IScheduledTask
         }).OfType<Movie>().ToList();
     }
 
+    /// <summary>
+    /// Queries TV series scoped to the configured libraries. Deliberately a separate,
+    /// parallel query from <see cref="GetMoviesInSelectedLibraries"/> rather than one
+    /// combined query split by type afterward, keeping the movie and series paths fully
+    /// independent end to end.
+    /// </summary>
+    private List<Series> GetSeriesInSelectedLibraries(string[] libraryIds)
+    {
+        var series = new List<Series>();
+        var seenIds = new HashSet<Guid>();
+
+        foreach (var id in libraryIds)
+        {
+            if (!Guid.TryParse(id, out var guid))
+            {
+                // Already warned about in GetMoviesInSelectedLibraries for the same run.
+                continue;
+            }
+
+            var libraryItem = _libraryManager.GetItemById(guid);
+            if (libraryItem is null)
+            {
+                continue;
+            }
+
+            var librarySeries = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Series },
+                Recursive = true,
+                IsVirtualItem = false,
+                Parent = libraryItem
+            });
+
+            foreach (var s in librarySeries.OfType<Series>())
+            {
+                if (seenIds.Add(s.Id))
+                {
+                    series.Add(s);
+                }
+            }
+        }
+
+        return series;
+    }
+
+    private List<Series> GetAllSeries()
+    {
+        return _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = new[] { BaseItemKind.Series },
+            Recursive = true,
+            IsVirtualItem = false
+        }).OfType<Series>().ToList();
+    }
+
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
@@ -445,5 +645,15 @@ public class FetchTrailersTask : IScheduledTask
         public int Renamed { get; set; }
 
         public int Migrated { get; set; }
+
+        public int SeriesScanned { get; set; }
+
+        public int SeriesAlreadyHadTrailer { get; set; }
+
+        public int SeriesDownloaded { get; set; }
+
+        public int SeriesNotFound { get; set; }
+
+        public int SeriesSkipped { get; set; }
     }
 }

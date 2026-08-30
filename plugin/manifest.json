@@ -2,12 +2,20 @@
   {
     "guid": "03385b47-ccda-4a9e-86a2-c0b1f80fa332",
     "name": "Trailer Fetcher",
-    "description": "Finds and downloads missing local movie trailers from YouTube via yt-dlp.",
-    "overview": "Finds and downloads missing local movie trailers from YouTube via yt-dlp.",
+    "description": "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp.",
+    "overview": "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp.",
     "owner": "grexe",
     "category": "General",
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
+      {
+        "version": "0.8.0.0",
+        "changelog": "Added TV series support - series-level trailers only (Services/SeriesMetadata.cs, Services/SeriesTrailerSources.cs), sharing the same library selection as movies but otherwise deliberately kept as a fully separate code path from the movie logic rather than a shared generic one, so a change intended for one media type can't silently affect the other. Checked Jellyfin's actual entity model first: Series has its own LocalTrailers/RemoteTrailers (same shape as Movie), but Season has no equivalent property at all - despite Jellyfin's docs showing a trailers/ folder example nested under a season folder - so season-level trailers aren't implemented until that's verified against a real library. No rename/migrate step for series: a series always already lives in its own dedicated folder. The settings page's \"Last run\" summary and the main log's TRAILER SYNC SUMMARY both show series counts alongside the movie ones now.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.0.0.zip",
+        "checksum": "73dbd0ce753246b96ddafcfd83d19128",
+        "timestamp": "2026-08-30T20:42:07Z"
+      },
       {
         "version": "0.7.1.0",
         "changelog": "Logged paths (directory entries, rename/migration targets) now show relative to the movie's own library root (via BaseItem.GetTopParent()) instead of the full container path, so log lines aren't dominated by a repeated mount-point prefix. Also fixed one path that was still logged in full (unlike its sibling lines) in the rename-folder failure case. No behavior change - display only.",

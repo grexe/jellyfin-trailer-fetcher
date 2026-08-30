@@ -1,22 +1,37 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.7.1.0"
+version: "0.8.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
-overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
+overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
 imageUrl: "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png"
 description: >
-  Scans the movie library for missing local trailers, searches YouTube via yt-dlp
-  using sequel-aware title matching, downloads matches into "<title>-trailer.ext"
-  next to the movie, and can migrate movies into their own folder - required for
-  Jellyfin to recognize a local trailer at all when movies otherwise share a flat
-  folder (see https://github.com/jellyfin/jellyfin/issues/10077).
+  Scans the library for missing local trailers - movies and TV series - searches
+  YouTube via yt-dlp using sequel-aware title matching, downloads matches into
+  "<title>-trailer.ext", and can migrate movies into their own folder - required for
+  Jellyfin to recognize a local movie trailer at all when movies otherwise share a
+  flat folder (see https://github.com/jellyfin/jellyfin/issues/10077); a series
+  always already has its own folder, so that step doesn't apply there.
 category: "General"
 owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.0.0: Added TV series support - series-level trailers only (Services/
+  SeriesMetadata.cs, Services/SeriesTrailerSources.cs), sharing the same library
+  selection as movies but otherwise deliberately kept as a fully separate code path
+  from the movie logic rather than a shared generic one, so a change intended for one
+  media type can't silently affect the other. Checked Jellyfin's actual entity model
+  first: Series has its own LocalTrailers/RemoteTrailers (same shape as Movie), but
+  Season has no equivalent property at all - despite Jellyfin's docs showing a
+  trailers/ folder example nested under a season folder - so season-level trailers
+  aren't implemented until that's verified against a real library. No rename/migrate
+  step for series: a series always already lives in its own dedicated folder. The
+  settings page's "Last run" summary and the main log's TRAILER SYNC SUMMARY both
+  show series counts alongside the movie ones now.
+
+
   0.7.1.0: Logged paths (directory entries, rename/migration targets) now show
   relative to the movie's own library root (via BaseItem.GetTopParent()) instead of
   the full container path, so log lines aren't dominated by a repeated mount-point

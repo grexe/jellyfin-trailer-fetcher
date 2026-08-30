@@ -16,7 +16,13 @@ public record RunSummary(
     [property: JsonPropertyName("notFound")] int NotFound,
     [property: JsonPropertyName("skipped")] int Skipped,
     [property: JsonPropertyName("renamed")] int Renamed,
-    [property: JsonPropertyName("migrated")] int Migrated);
+    [property: JsonPropertyName("migrated")] int Migrated,
+    [property: JsonPropertyName("totalSeries")] int TotalSeries = 0,
+    [property: JsonPropertyName("seriesScanned")] int SeriesScanned = 0,
+    [property: JsonPropertyName("seriesAlreadyHadTrailer")] int SeriesAlreadyHadTrailer = 0,
+    [property: JsonPropertyName("seriesDownloaded")] int SeriesDownloaded = 0,
+    [property: JsonPropertyName("seriesNotFound")] int SeriesNotFound = 0,
+    [property: JsonPropertyName("seriesSkipped")] int SeriesSkipped = 0);
 
 /// <summary>
 /// Persists the most recent run's summary (the same numbers logged as the "TRAILER SYNC

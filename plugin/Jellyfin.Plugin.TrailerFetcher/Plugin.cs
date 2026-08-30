@@ -10,9 +10,9 @@ using MediaBrowser.Model.Serialization;
 namespace Jellyfin.Plugin.TrailerFetcher;
 
 /// <summary>
-/// The Trailer Fetcher plugin: finds and downloads missing local movie trailers from
-/// YouTube via yt-dlp, and (optionally) migrates movies into their own folder, which
-/// Jellyfin requires to recognize a local trailer at all
+/// The Trailer Fetcher plugin: finds and downloads missing local trailers for movies
+/// and TV series from YouTube via yt-dlp, and (optionally) migrates movies into their
+/// own folder, which Jellyfin requires to recognize a local movie trailer at all
 /// (see https://github.com/jellyfin/jellyfin/issues/10077).
 /// </summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
@@ -36,7 +36,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     /// <inheritdoc />
     public override string Description =>
-        "Finds and downloads missing local movie trailers from YouTube via yt-dlp.";
+        "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp.";
 
     /// <summary>
     /// Gets the current plugin instance.
