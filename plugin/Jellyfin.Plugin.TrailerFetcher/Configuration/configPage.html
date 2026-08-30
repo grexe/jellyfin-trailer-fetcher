@@ -81,18 +81,6 @@
                         <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
                     </div>
 
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">yt-dlp executable (advanced)</label>
-                        <input id="YtDlpPath" name="YtDlpPath" type="text" is="emby-input" placeholder="leave empty to auto-manage" />
-                        <div class="fieldDescription">
-                            Leave empty (recommended) and the plugin downloads and manages its own yt-dlp - and the deno
-                            JavaScript runtime it needs for YouTube's player challenges - automatically, keeping yt-dlp
-                            updated on its own. No server or container customization needed. Only set this if you'd rather
-                            use your own yt-dlp installation instead: a bare command resolved via the server process's PATH,
-                            or an absolute path.
-                        </div>
-                    </div>
-
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -173,7 +161,6 @@
                         document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
                         document.querySelector('#DryRun').checked = config.DryRun;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
-                        document.querySelector('#YtDlpPath').value = config.YtDlpPath;
                         updateCookiesStatus(config.CookiesFilePath);
                         loadLibraries(config.LibraryIds || []);
                         Dashboard.hideLoadingMsg();
@@ -244,7 +231,6 @@
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
-                        config.YtDlpPath = document.querySelector('#YtDlpPath').value;
                         config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
                             return el.value;
                         });

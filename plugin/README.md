@@ -76,23 +76,25 @@ filtering is replicated by probing candidates with `--dump-json` before download
 one that passes). yt-dlp also needs a JS runtime (`deno`) to solve YouTube's player
 challenges.
 
-**Neither needs to be installed on the server.** By default (the "yt-dlp executable"
-setting left empty) `Services/DependencyProvisioner.cs` downloads both directly from
-their own GitHub releases into the plugin's data folder the first time they're needed,
-verifies each download's checksum, and self-updates yt-dlp (via its own `-U`) at most
-once every 24 hours - yt-dlp needs frequent updates to keep working against YouTube's
-changes, which is also why neither is bundled inside the plugin's own release zip (a
-copy frozen at plugin-release time would go stale in weeks). This requires outbound
-internet access from wherever the Jellyfin server process runs, which it already needs
-anyway to reach YouTube itself. ffmpeg does *not* get this treatment - the plugin points
-yt-dlp at Jellyfin's own configured ffmpeg binary (`IMediaEncoder.EncoderPath`) instead.
+**Neither needs to be installed on the server, and there's no setting for it.**
+`Services/DependencyProvisioner.cs` always downloads both directly from their own GitHub
+releases into the plugin's data folder the first time they're needed, verifies each
+download's checksum, and self-updates yt-dlp (via its own `-U`) at most once every 24
+hours - yt-dlp needs frequent updates to keep working against YouTube's changes, which
+is also why neither is bundled inside the plugin's own release zip (a copy frozen at
+plugin-release time would go stale in weeks). This requires outbound internet access
+from wherever the Jellyfin server process runs, which it already needs anyway to reach
+YouTube itself (and to check for plugin/Jellyfin updates in the first place) - not
+something this plugin should need to work around. ffmpeg does *not* get this treatment -
+the plugin points yt-dlp at Jellyfin's own configured ffmpeg binary
+(`IMediaEncoder.EncoderPath`) instead.
 
-Setting "yt-dlp executable" to a specific command/path opts back out of all of this and
-uses that installation directly (unmanaged, no self-update) - useful if you already run
-yt-dlp elsewhere on the same host/container. If auto-provisioning fails (e.g. no
-internet egress) or a manually configured executable isn't found, the plugin logs a
-clear error per attempted download rather than failing silently - check
-`trailer-fetcher.log` (see Logging below).
+There's deliberately no setting to point at a different/system yt-dlp installation:
+letting that vary would mean supporting whatever combination of yt-dlp version and flags
+a user happens to have installed, instead of the one version+flag combination this
+plugin is actually built and tested against. If provisioning fails (e.g. no internet
+egress), the plugin logs a clear error per attempted download rather than failing
+silently - check `trailer-fetcher.log` (see Logging below).
 
 ### Evaluated and rejected: MeTube
 

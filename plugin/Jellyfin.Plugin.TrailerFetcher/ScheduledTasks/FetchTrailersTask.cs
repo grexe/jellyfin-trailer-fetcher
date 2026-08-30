@@ -129,20 +129,15 @@ public class FetchTrailersTask : IScheduledTask
     }
 
     /// <summary>
-    /// Resolves which yt-dlp (and, if managed, deno) executables to use. When
-    /// <see cref="PluginConfiguration.YtDlpPath"/> is left empty, downloads and manages
-    /// its own copies via <see cref="DependencyProvisioner"/> - so the plugin works
-    /// without any server/container customization - self-updating yt-dlp periodically.
-    /// A dry run never actually invokes yt-dlp (see ProcessMovieAsync), so provisioning
-    /// is skipped entirely then, keeping dry-run free of side effects and instant.
+    /// Resolves the yt-dlp and deno executables to use, downloading and managing both
+    /// via <see cref="DependencyProvisioner"/> - always the plugin's own tested copies,
+    /// never a system installation, so there's no server/container customization or
+    /// version-mismatch support burden. A dry run never actually invokes yt-dlp (see
+    /// ProcessMovieAsync), so provisioning is skipped entirely then, keeping dry-run
+    /// free of side effects and instant.
     /// </summary>
     private async Task<YtDlpClient> BuildYtDlpClientAsync(PluginConfiguration config, string? ffmpegDir, CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrEmpty(config.YtDlpPath))
-        {
-            return new YtDlpClient(config.YtDlpPath, denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
-        }
-
         if (config.DryRun)
         {
             return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
@@ -152,9 +147,7 @@ public class FetchTrailersTask : IScheduledTask
         var managedYtDlp = await provisioner.EnsureYtDlpAsync(cancellationToken).ConfigureAwait(false);
         if (managedYtDlp is null)
         {
-            _logger.LogError(
-                "Could not automatically provision yt-dlp; no trailers can be fetched this run. " +
-                "Set a specific \"yt-dlp executable\" in settings to use your own installation instead.");
+            _logger.LogError("Could not automatically provision yt-dlp; no trailers can be fetched this run.");
             return new YtDlpClient("yt-dlp", denoPath: null, config.CookiesFilePath, ffmpegDir, _logger);
         }
 
