@@ -356,7 +356,18 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation("*** Processing series: {Name}", PathDisplay.Relative(seriesPath, libraryRoot));
 
-        var (preferredTitle, titleVariants) = ItemMetadata.ResolveTitles(series, seriesPath);
+        var (resolvedTitle, resolvedVariants) = ItemMetadata.ResolveTitles(series, seriesPath);
+
+        // Season-range noise ("S1", "S1 - S5") is TV-specific - see
+        // SeriesTitleCleanup for why this is a separate step rather than something
+        // ItemMetadata/TitleMatching (shared with movies) needs to know about.
+        var preferredTitle = SeriesTitleCleanup.StripSeasonRange(resolvedTitle);
+        var titleVariants = resolvedVariants
+            .Select(SeriesTitleCleanup.StripSeasonRange)
+            .Where(t => t.Length > 0)
+            .Distinct()
+            .ToList();
+
         var year = ItemMetadata.ResolveYear(series, seriesPath);
         var yearStr = year is not null ? $" ({year})" : string.Empty;
         var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");

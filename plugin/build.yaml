@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.4.0"
+version: "0.8.5.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,21 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.5.0: Fixed wrong search queries for TV series bundled as a multi-season
+  folder (e.g. "... S1 - S5 [Full Series] ..."): a season-range fragment ("S1",
+  "S1 - S5", "Season 1-5") was surviving into the resolved title, since nothing in
+  the shared title-cleanup logic knows about season ranges (a movie title never has
+  one) - confirmed live on "Food Wars! (Shokugeki no Soma)", whose search queries
+  all carried a spurious "S1" because Jellyfin's own matched Name already had it
+  before the plugin ever saw it. Added Services/SeriesTitleCleanup.cs, a small
+  series-only post-processing step (deliberately not folded into the shared
+  ItemMetadata/TitleMatching, since this noise is TV-specific) that strips a
+  season-range fragment from the resolved title/variants before they're used for
+  search or the trailer filename. Verified against the exact failing case plus
+  several variants (Season 1-4, S01-S04) and confirmed it leaves unrelated
+  content alone (e.g. a hypothetical title like "S1mone").
+
+
   0.8.4.0: The settings page's "Last run" summary is now a real styled HTML table
   (header row, right-aligned values, a distinct section divider for TV series
   counts) instead of an unstyled table with no visual structure.

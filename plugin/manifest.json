@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.5.0",
+        "changelog": "Fixed wrong search queries for TV series bundled as a multi-season folder (e.g. \"... S1 - S5 [Full Series] ...\"): a season-range fragment (\"S1\", \"S1 - S5\", \"Season 1-5\") was surviving into the resolved title, since nothing in the shared title-cleanup logic knows about season ranges (a movie title never has one) - confirmed live on \"Food Wars! (Shokugeki no Soma)\", whose search queries all carried a spurious \"S1\" because Jellyfin's own matched Name already had it before the plugin ever saw it. Added Services/SeriesTitleCleanup.cs, a small series-only post-processing step (deliberately not folded into the shared ItemMetadata/TitleMatching, since this noise is TV-specific) that strips a season-range fragment from the resolved title/variants before they're used for search or the trailer filename. Verified against the exact failing case plus several variants (Season 1-4, S01-S04) and confirmed it leaves unrelated content alone (e.g. a hypothetical title like \"S1mone\").",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.5.0.zip",
+        "checksum": "4c6b1429a16d6c3c2804a3cc315fd77f",
+        "timestamp": "2026-08-30T22:08:31Z"
+      },
+      {
         "version": "0.8.4.0",
         "changelog": "The settings page's \"Last run\" summary is now a real styled HTML table (header row, right-aligned values, a distinct section divider for TV series counts) instead of an unstyled table with no visual structure.",
         "targetAbi": "10.11.0.0",
