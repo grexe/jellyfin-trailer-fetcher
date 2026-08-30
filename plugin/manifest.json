@@ -9,12 +9,12 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
-        "version": "0.3.1.0",
-        "changelog": "Clearer cookies-file guidance on the settings page - no browser exposes a plain \"cookies.txt\" to point to (Firefox stores cookies in an SQLite database, not a text file); names the actual export extension needed (\"Get cookies.txt LOCALLY\"). Also fixed the catalog logo being cropped and replaced it with a solid-background badge.",
+        "version": "0.3.2.0",
+        "changelog": "This plugin's own log entries (scheduled task runs, cookie upload/removal, etc.) now also get mirrored into their own file (plugins/Jellyfin.Plugin.TrailerFetcher/trailer-fetcher.log) via a scoped ILoggerProvider, so a run can be inspected without wading through the main server log. No change to what's logged, just where.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.3.1.0.zip",
-        "checksum": "cbd1d8baadd22a32154cdc774560d27d",
-        "timestamp": "2026-08-30T12:50:14Z"
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.3.2.0.zip",
+        "checksum": "bd183fc1617a6e80ffb056468663da42",
+        "timestamp": "2026-08-30T13:08:12Z"
       }
     ]
   }

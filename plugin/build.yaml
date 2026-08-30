@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.3.1.0"
+version: "0.3.2.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local movie trailers from YouTube via yt-dlp."
@@ -17,6 +17,13 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.3.2.0: This plugin's own log entries (scheduled task runs, cookie upload/removal,
+  etc.) now also get mirrored into their own file
+  (plugins/Jellyfin.Plugin.TrailerFetcher/trailer-fetcher.log) via a scoped
+  ILoggerProvider, so a run can be inspected without wading through the main server
+  log. No change to what's logged, just where.
+
+
   0.3.1.0: Clearer cookies-file guidance on the settings page - no browser exposes a
   plain "cookies.txt" to point to (Firefox stores cookies in an SQLite database, not
   a text file); names the actual export extension needed ("Get cookies.txt LOCALLY").

@@ -46,6 +46,7 @@ in C#.
 | Plugin/task/config wiring | ✅ Working - settings page loads/saves, scheduled task registers |
 | Cookie file upload | ✅ Working |
 | Per-library scan scoping | ✅ Working |
+| Dedicated log file | ✅ Working |
 | Trailer search/filter/download | ⏳ Not ported yet |
 | Folder migration & rename | ⏳ Not ported yet |
 
@@ -100,6 +101,17 @@ The settings page lists every configured Jellyfin library (fetched live via
 `GET /TrailerFetcher/Libraries`, backed by `ILibraryManager.GetVirtualFolders()`).
 Leave all unchecked to scan every library; check specific ones to scope
 `FetchTrailersTask`'s query to just those (`InternalItemsQuery.TopParentIds`).
+
+## Logging
+
+This plugin's log entries (from `FetchTrailersTask`, `TrailerFetcherController`, and
+anything else in the `Jellyfin.Plugin.TrailerFetcher` namespace) are mirrored into
+their own file, `<plugin data folder>/trailer-fetcher.log`, in addition to Jellyfin's
+main server log - so a run can be inspected without wading through unrelated server
+noise. Implemented as a scoped `ILoggerProvider` (`Logging/PluginFileLoggerProvider.cs`,
+registered via `PluginServiceRegistrator`) that filters by log category rather than
+requiring a second, duplicate logging call at every call site - any future code that
+injects the normal `ILogger<T>` gets this for free.
 
 ## Development
 
