@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.17.0",
+        "changelog": "Two small polish items from live testing. (1) The rate-limit ERROR log line is now a fixed, short message (\"...rate-limited by YouTube for up to an hour. Stopping the run now.\") with a link to yt-dlp's own wiki page on the condition, instead of extracting/reformatting yt-dlp's raw stderr text. (2) The settings page's last-run-summary table had a generic \"Metric / Value\" header for movies but correctly showed \"TV series\" as a section label further down - movies now get their own \"Movies\" section label the same way, and the generic header row (which added nothing the section labels don't already say) was dropped.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.17.0.zip",
+        "checksum": "63de7f5625103107f40e7dfdf19cf612",
+        "timestamp": "2026-08-31T00:08:41Z"
+      },
+      {
         "version": "0.8.16.0",
         "changelog": "Trimmed the rate-limit ERROR log line. 0.8.15.0's log included yt-dlp's entire raw warning paragraph verbatim - a lead-in sentence, the actual rate-limit notice, then yt-dlp's own \"-t sleep\" suggestion and a wiki URL, most of which is noise once our own message already explains what's happening and why. Now logs just the one sentence that matters (\"The current session has been rate-limited by YouTube for up to an hour.\") plus a short reason for stopping early. No behavior change, log output only.",
         "targetAbi": "10.11.0.0",

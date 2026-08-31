@@ -386,20 +386,10 @@ public class YtDlpClient
         // propagates straight past every retry tier and the movie/series loop itself.
         if (stderrText.Contains("rate-limited by YouTube", StringComparison.OrdinalIgnoreCase))
         {
-            // yt-dlp's raw line is a paragraph: a lead-in sentence, the actual rate-limit
-            // notice, then its own "-t sleep" suggestion and a wiki URL. Only the middle
-            // sentence is worth surfacing in our log - the rest is noise we already explain
-            // (or deliberately don't follow) in our own message around this exception.
-            var sentence = stderrText
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .SelectMany(line => line.Split(". ", StringSplitOptions.RemoveEmptyEntries))
-                .FirstOrDefault(s => s.Contains("rate-limited", StringComparison.OrdinalIgnoreCase))
-                ?.Trim();
-
             throw new YouTubeRateLimitedException(
-                sentence is null ? "YouTube has rate-limited this session."
-                : sentence.EndsWith('.') ? sentence
-                : sentence + ".");
+                "The current session has been rate-limited by YouTube for up to an hour. Stopping the run " +
+                "now. For more details, see " +
+                "https://github.com/yt-dlp/yt-dlp/wiki/Extractors#this-content-isnt-available-try-again-later");
         }
 
         return (process.ExitCode, stdout.ToString(), stderrText);

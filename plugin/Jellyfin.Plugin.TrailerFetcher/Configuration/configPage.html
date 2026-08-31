@@ -216,6 +216,7 @@
                     // library: 0" reads as if something's wrong rather than as "no
                     // movies were in scope".
                     if (summary.totalMovies > 0) {
+                        rows.push({ section: 'Movies' });
                         rows.push({ label: 'Total movies in library', value: summary.totalMovies });
                         rows.push({ label: 'Movies processed', value: summary.scanned });
                         rows.push({ label: 'Already had trailer', value: summary.alreadyHadTrailer });
@@ -235,10 +236,7 @@
                     }
 
                     if (summary.totalSeries > 0) {
-                        if (summary.totalMovies > 0) {
-                            rows.push({ section: 'TV series' });
-                        }
-
+                        rows.push({ section: 'TV series' });
                         rows.push({ label: 'Total series in library', value: summary.totalSeries });
                         rows.push({ label: 'Series processed', value: summary.seriesScanned });
                         rows.push({ label: 'Already had trailer', value: summary.seriesAlreadyHadTrailer });
@@ -302,17 +300,6 @@
                     table.style.borderCollapse = 'collapse';
                     table.style.width = '100%';
                     table.style.maxWidth = '32em';
-
-                    var thead = document.createElement('thead');
-                    var headRow = document.createElement('tr');
-                    ['Metric', 'Value'].forEach(function (text, i) {
-                        var th = document.createElement('th');
-                        th.textContent = text;
-                        styleCell(th, { align: i === 0 ? 'left' : 'right', bold: true, thick: true });
-                        headRow.appendChild(th);
-                    });
-                    thead.appendChild(headRow);
-                    table.appendChild(thead);
 
                     var tbody = document.createElement('tbody');
                     rows.forEach(function (row) {
