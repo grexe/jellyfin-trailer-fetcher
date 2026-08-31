@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.22.0",
+        "changelog": "Added an opt-in \"Upgrade low-quality trailers\" setting. When on, a movie/series that already has a local trailer still gets re-checked against a configurable \"Minimum trailer quality\" (default 720p, via ffprobe) and re-searched if it falls short - most usefully for trailers that landed on the mweb fallback's ~360p cliff (see 0.8.21.0). The existing file is only ever replaced by a genuinely higher-resolution download: both are probed and compared after the new attempt completes, so a re-attempt that can't beat it, or that also lands on a low-quality fallback, leaves the original trailer untouched rather than trading one low-quality file for another. Off by default - re-checking every under-quality trailer on every run until it clears the bar means more yt-dlp traffic (and so more rate-limit exposure) than a one-time pass, until the library catches up.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.22.0.zip",
+        "checksum": "eea53a5168e18808e0acb4e536499c85",
+        "timestamp": "2026-08-31T20:00:23Z"
+      },
+      {
         "version": "0.8.21.0",
         "changelog": "Improved trailer quality. The download format selector was restricted to [ext=mp4]/[ext=m4a] video/audio only - YouTube's actual highest-resolution streams are frequently VP9/AV1-in-webm only, so this could silently cap quality below what was genuinely available, confirmed by comparing format listings for real trailer searches. Now uses yt-dlp's own true default selector (bestvideo*+bestaudio/best, no container restriction) while --merge-output-format still remuxes the result into .mp4 to match the fixed trailer filename - Jellyfin transcodes on the fly for any client that can't direct-play the resulting codec, same as for any other video. Separately, confirmed by hand that the existing mweb fallback tier (used when the higher-quality adaptive formats need a PO token this plugin doesn't provide) can silently settle for an old muxed format capped around 360p - a real quality cliff that was previously indistinguishable in the log from a normal download. That retry's log line now says so explicitly.",
         "targetAbi": "10.11.0.0",

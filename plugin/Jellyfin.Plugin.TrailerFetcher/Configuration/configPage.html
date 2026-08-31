@@ -94,6 +94,31 @@
                         <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="UpgradeLowQualityTrailers" name="UpgradeLowQualityTrailers" type="checkbox" is="emby-checkbox" />
+                            <span>Upgrade low-quality trailers</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Also re-check trailers that already exist: if one is below the minimum quality below,
+                            search for a better one. The existing file is only ever replaced by a genuinely
+                            higher-resolution download (both are compared after downloading) - a re-attempt that
+                            can't beat it, or that also lands on a low-quality fallback, leaves the original
+                            untouched. Off by default: this means re-running the full search/download flow for
+                            every under-quality trailer on every run until it clears the bar, not just once - more
+                            yt-dlp traffic, and so more rate-limit exposure, until the library catches up.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MinTrailerResolution">Minimum trailer quality (p)</label>
+                        <input id="MinTrailerResolution" name="MinTrailerResolution" type="number" is="emby-input" min="144" value="720" />
+                        <div class="fieldDescription">
+                            The minimum acceptable trailer resolution, e.g. 720 for "720p". Only used when "Upgrade
+                            low-quality trailers" above is on.
+                        </div>
+                    </div>
+
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="RequestDelaySeconds">Delay between requests (seconds)</label>
                         <input id="RequestDelaySeconds" name="RequestDelaySeconds" type="number" is="emby-input" min="0" value="3" />
@@ -259,6 +284,10 @@
                         if (summary.migrated > 0) {
                             rows.push({ label: 'Migrated to own folder', value: summary.migrated });
                         }
+
+                        if (summary.upgraded > 0) {
+                            rows.push({ label: 'Trailers upgraded', value: summary.upgraded });
+                        }
                     }
 
                     if (summary.totalSeries > 0) {
@@ -270,6 +299,10 @@
                         rows.push({ label: 'No trailer found', value: fmt(summary.seriesScanStarted, summary.seriesNotFound) });
                         if (summary.seriesSkipped > 0) {
                             rows.push({ label: 'Skipped (no folder)', value: summary.seriesSkipped });
+                        }
+
+                        if (summary.seriesUpgraded > 0) {
+                            rows.push({ label: 'Trailers upgraded', value: summary.seriesUpgraded });
                         }
                     }
 
@@ -368,6 +401,8 @@
                         document.querySelector('#DryRun').checked = config.DryRun;
                         document.querySelector('#VerboseLogging').checked = config.VerboseLogging;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
+                        document.querySelector('#UpgradeLowQualityTrailers').checked = config.UpgradeLowQualityTrailers;
+                        document.querySelector('#MinTrailerResolution').value = config.MinTrailerResolution;
                         document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
                         document.querySelector('#RetryOnRateLimit').checked = config.RetryOnRateLimit;
                         document.querySelector('#RateLimitRetryDelayMinutes').value = config.RateLimitRetryDelayMinutes;
@@ -442,6 +477,8 @@
                         config.DryRun = document.querySelector('#DryRun').checked;
                         config.VerboseLogging = document.querySelector('#VerboseLogging').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
+                        config.UpgradeLowQualityTrailers = document.querySelector('#UpgradeLowQualityTrailers').checked;
+                        config.MinTrailerResolution = parseInt(document.querySelector('#MinTrailerResolution').value, 10);
                         config.RequestDelaySeconds = parseInt(document.querySelector('#RequestDelaySeconds').value, 10);
                         config.RetryOnRateLimit = document.querySelector('#RetryOnRateLimit').checked;
                         config.RateLimitRetryDelayMinutes = parseInt(document.querySelector('#RateLimitRetryDelayMinutes').value, 10);

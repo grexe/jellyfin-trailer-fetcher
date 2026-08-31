@@ -51,6 +51,8 @@ public class PluginConfiguration : BasePluginConfiguration
         RequestDelaySeconds = 3;
         RetryOnRateLimit = true;
         RateLimitRetryDelayMinutes = 65;
+        UpgradeLowQualityTrailers = false;
+        MinTrailerResolution = 720;
     }
 
     /// <summary>
@@ -147,4 +149,27 @@ public class PluginConfiguration : BasePluginConfiguration
     /// hitting the same still-active limit.
     /// </summary>
     public int RateLimitRetryDelayMinutes { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a movie/series that already has a
+    /// local trailer should still be checked against <see cref="MinTrailerResolution"/>
+    /// and re-searched if it falls short - e.g. one downloaded through the mweb
+    /// fallback tier (used when YouTube's higher-quality formats need a PO token
+    /// this plugin doesn't provide), which can silently land as low as 360p. Off by
+    /// default, since it means re-running the full search/download flow for every
+    /// under-resolution trailer on every run until each one clears the bar, not just
+    /// a one-time pass - more yt-dlp traffic, and so more rate-limit exposure, until
+    /// the library catches up. The existing file is only ever replaced by a
+    /// genuinely higher-resolution download (both are probed via ffprobe and
+    /// compared); a re-attempt that can't beat it, or gets rate-limited before
+    /// finding a candidate, leaves the original trailer untouched.
+    /// </summary>
+    public bool UpgradeLowQualityTrailers { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum acceptable trailer resolution, as a frame height in
+    /// pixels (e.g. 720 for "720p"), used by <see cref="UpgradeLowQualityTrailers"/>
+    /// to decide which existing trailers are worth trying to replace.
+    /// </summary>
+    public int MinTrailerResolution { get; set; }
 }

@@ -106,6 +106,16 @@ public class FetchTrailersTask : IScheduledTask
             // EncoderPath not configured yet; yt-dlp falls back to its own bundled/PATH ffmpeg.
         }
 
+        string? ffprobePath = null;
+        try
+        {
+            ffprobePath = _mediaEncoder.ProbePath;
+        }
+        catch (ArgumentException)
+        {
+            // ProbePath not configured yet; trailer-quality upgrade checks are skipped without it.
+        }
+
         var ytDlp = await BuildYtDlpClientAsync(config, ffmpegDir, cancellationToken).ConfigureAwait(false);
         var stats = new TrailerFetchStats();
         var totalItems = movies.Count + series.Count;
@@ -140,7 +150,7 @@ public class FetchTrailersTask : IScheduledTask
                 for (; movieIndex < movies.Count; movieIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessMovieAsync(movies[movieIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                    await ProcessMovieAsync(movies[movieIndex], config, ytDlp, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
                     progress.Report((movieIndex + 1) * 100.0 / totalItems);
 
                     // A movie/series that completes without hitting the rate limit again
@@ -156,7 +166,7 @@ public class FetchTrailersTask : IScheduledTask
                 for (; seriesIndex < series.Count; seriesIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                    await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
                     progress.Report((movies.Count + seriesIndex + 1) * 100.0 / totalItems);
                     hasRetriedRateLimit = false;
                 }
@@ -268,7 +278,7 @@ public class FetchTrailersTask : IScheduledTask
         return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, config.RequestDelaySeconds, _logger);
     }
 
-    private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)
+    private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
     {
         var rawTitle = string.IsNullOrEmpty(movie.Name) ? "Unknown" : movie.Name;
         var localPath = movie.Path;
@@ -320,15 +330,29 @@ public class FetchTrailersTask : IScheduledTask
             Path.Combine(folderPath, "trailer.mp4"),
             Path.Combine(folderPath, "trailer.mkv")
         };
-        var alreadyHadTrailer = movie.LocalTrailers.Count > 0 || trailerCandidates.Any(File.Exists);
+        var existingTrailerPath = trailerCandidates.FirstOrDefault(File.Exists);
+        var alreadyHadTrailer = movie.LocalTrailers.Count > 0 || existingTrailerPath is not null;
         var downloadSuccess = false;
 
         if (alreadyHadTrailer)
         {
-            _logger.LogInformation("  > Trailer already exists, skipping.");
             stats.AlreadyHadTrailer++;
         }
-        else
+
+        // An existing trailer still gets a search/download attempt if it's below the
+        // configured minimum resolution and upgrades are enabled - the original file
+        // is only ever replaced by a genuinely higher-resolution download (see the
+        // ResolveTrailerUpgrade call below), so a re-attempt that can't beat it never
+        // makes things worse.
+        var (shouldSearch, upgradeBackupPath, existingHeight) = await PrepareUpgradeAttemptAsync(
+            alreadyHadTrailer, existingTrailerPath, config, ffprobePath, cancellationToken).ConfigureAwait(false);
+
+        if (alreadyHadTrailer && !shouldSearch)
+        {
+            _logger.LogInformation("  > Trailer already exists, skipping.");
+        }
+
+        if (shouldSearch)
         {
             if (config.RenameOriginal)
             {
@@ -396,7 +420,16 @@ public class FetchTrailersTask : IScheduledTask
                 }
             }
 
-            if (downloadSuccess)
+            if (upgradeBackupPath is not null)
+            {
+                downloadSuccess = await ResolveTrailerUpgradeAsync(
+                    downloadSuccess, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight, ffprobePath, cancellationToken).ConfigureAwait(false);
+                if (downloadSuccess)
+                {
+                    stats.Upgraded++;
+                }
+            }
+            else if (downloadSuccess)
             {
                 stats.Downloaded++;
             }
@@ -425,6 +458,146 @@ public class FetchTrailersTask : IScheduledTask
     }
 
     /// <summary>
+    /// Decides whether an item with an existing local trailer should still get a
+    /// search/download attempt because it's below <see cref="PluginConfiguration.MinTrailerResolution"/>,
+    /// and if so, moves the existing file aside so the normal download flow can write
+    /// a fresh one without clobbering it before the two are compared by
+    /// <see cref="ResolveTrailerUpgradeAsync"/>. Shared between movies and series -
+    /// this decision has no movie/series-specific behavior of its own.
+    /// </summary>
+    /// <returns>
+    /// ShouldSearch: true if a search/download attempt should run (either there was no
+    /// trailer at all, or an upgrade attempt is warranted). UpgradeBackupPath: where the
+    /// existing trailer was moved to, non-null only for an upgrade attempt.
+    /// ExistingHeight: the existing trailer's probed resolution, if known.
+    /// </returns>
+    private async Task<(bool ShouldSearch, string? UpgradeBackupPath, int? ExistingHeight)> PrepareUpgradeAttemptAsync(
+        bool alreadyHadTrailer, string? existingTrailerPath, PluginConfiguration config, string? ffprobePath, CancellationToken cancellationToken)
+    {
+        if (!alreadyHadTrailer)
+        {
+            return (true, null, null);
+        }
+
+        if (!config.UpgradeLowQualityTrailers || config.DryRun || existingTrailerPath is null || string.IsNullOrEmpty(ffprobePath))
+        {
+            return (false, null, null);
+        }
+
+        var existingHeight = await VideoProbe.GetHeightAsync(ffprobePath, existingTrailerPath, _logger, cancellationToken).ConfigureAwait(false);
+        if (existingHeight is null || existingHeight.Value >= config.MinTrailerResolution)
+        {
+            return (false, null, existingHeight);
+        }
+
+        _logger.LogInformation(
+            "  > Existing trailer is only {Height}p (below the configured minimum of {Min}p) - looking for a better one...",
+            existingHeight,
+            config.MinTrailerResolution);
+
+        var upgradeBackupPath = existingTrailerPath + ".upgrading";
+        try
+        {
+            File.Move(existingTrailerPath, upgradeBackupPath, overwrite: true);
+        }
+        catch (IOException ex)
+        {
+            // e.g. the file is locked because it's actively being streamed right now -
+            // skip the upgrade attempt for this one item rather than letting an
+            // unhandled exception here abort the entire remaining run.
+            _logger.LogWarning("  > Could not set aside the existing trailer for an upgrade attempt, skipping: {Error}", ex.Message);
+            return (false, null, existingHeight);
+        }
+
+        return (true, upgradeBackupPath, existingHeight);
+    }
+
+    /// <summary>
+    /// After a search/download attempt aimed at replacing an existing under-resolution
+    /// trailer: keeps the new file only if it actually turned out higher resolution
+    /// than the one it's replacing - a re-attempt that fails outright, or that also
+    /// lands on a low-quality fallback, restores the original untouched rather than
+    /// trading one low-quality trailer for another. Shared between movies and series.
+    /// </summary>
+    /// <returns>Whether the new trailer was kept (a genuine upgrade).</returns>
+    private async Task<bool> ResolveTrailerUpgradeAsync(
+        bool downloadSuccess,
+        string trailerFilename,
+        string existingTrailerPath,
+        string upgradeBackupPath,
+        int? existingHeight,
+        string? ffprobePath,
+        CancellationToken cancellationToken)
+    {
+        if (!downloadSuccess)
+        {
+            RestoreUpgradeBackup(trailerFilename, existingTrailerPath, upgradeBackupPath);
+            _logger.LogInformation("  > Could not find a better trailer - kept the existing one.");
+            return false;
+        }
+
+        var newHeight = string.IsNullOrEmpty(ffprobePath)
+            ? null
+            : await VideoProbe.GetHeightAsync(ffprobePath, trailerFilename, _logger, cancellationToken).ConfigureAwait(false);
+
+        if (newHeight is not null && (existingHeight is null || newHeight.Value > existingHeight.Value))
+        {
+            try
+            {
+                File.Delete(upgradeBackupPath);
+            }
+            catch (IOException ex)
+            {
+                // Non-fatal: the new (better) trailer is already saved at
+                // trailerFilename, so the movie/series is left with a valid trailer
+                // either way - a lingering ".upgrading" backup file is just clutter.
+                _logger.LogWarning("  > Could not remove the old trailer backup {Path}: {Error}", upgradeBackupPath, ex.Message);
+            }
+
+            _logger.LogInformation("  > Upgraded trailer resolution: {Old}p -> {New}p.", existingHeight, newHeight);
+            return true;
+        }
+
+        RestoreUpgradeBackup(trailerFilename, existingTrailerPath, upgradeBackupPath);
+        _logger.LogInformation(
+            "  > New attempt ({New}p) wasn't better than the existing trailer ({Old}p) - kept the existing one.",
+            newHeight,
+            existingHeight);
+        return false;
+    }
+
+    private void RestoreUpgradeBackup(string trailerFilename, string existingTrailerPath, string upgradeBackupPath)
+    {
+        try
+        {
+            // The new attempt may have saved under a different filename than the old
+            // one (e.g. the existing file used a legacy "trailer.mp4" name while the
+            // current naming convention would produce "<Title>-trailer.mp4") - clean
+            // it up separately rather than relying on File.Move's overwrite to do it,
+            // which only replaces the destination path, not an unrelated stray file.
+            if (File.Exists(trailerFilename) && !string.Equals(trailerFilename, existingTrailerPath, StringComparison.Ordinal))
+            {
+                File.Delete(trailerFilename);
+            }
+
+            File.Move(upgradeBackupPath, existingTrailerPath, overwrite: true);
+        }
+        catch (IOException ex)
+        {
+            // The backup is still sitting at upgradeBackupPath either way (Jellyfin's
+            // local-extras resolver won't recognize its ".upgrading" name as a
+            // trailer, but the file itself isn't lost) - worth an ERROR since this
+            // leaves the movie/series without a *recognized* trailer until it's
+            // manually renamed back or the next run's upgrade attempt succeeds.
+            _logger.LogError(
+                "  > Could not restore the existing trailer backup from {Backup} to {Path}: {Error}",
+                upgradeBackupPath,
+                existingTrailerPath,
+                ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Processes a single TV series: tries its official RemoteTrailers, then a
     /// multi-stage YouTube search (see <see cref="TrailerSources"/>), same duration/
     /// title filtering as movies. Title/year resolution and source-query building are
@@ -437,7 +610,7 @@ public class FetchTrailersTask : IScheduledTask
     /// apply, and validity is a folder-exists check rather than
     /// <see cref="MovieFileOperations.IsValidMediaFile"/>.
     /// </summary>
-    private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, CancellationToken cancellationToken)
+    private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
     {
         var rawTitle = string.IsNullOrEmpty(series.Name) ? "Unknown" : series.Name;
         var seriesPath = series.Path;
@@ -480,12 +653,21 @@ public class FetchTrailersTask : IScheduledTask
             Path.Combine(seriesPath, "trailer.mp4"),
             Path.Combine(seriesPath, "trailer.mkv")
         };
-        var alreadyHadTrailer = series.LocalTrailers.Count > 0 || trailerCandidates.Any(File.Exists);
+        var existingTrailerPath = trailerCandidates.FirstOrDefault(File.Exists);
+        var alreadyHadTrailer = series.LocalTrailers.Count > 0 || existingTrailerPath is not null;
+        var downloadSuccess = false;
 
         if (alreadyHadTrailer)
         {
-            _logger.LogInformation("  > Trailer already exists, skipping.");
             stats.SeriesAlreadyHadTrailer++;
+        }
+
+        var (shouldSearch, upgradeBackupPath, existingHeight) = await PrepareUpgradeAttemptAsync(
+            alreadyHadTrailer, existingTrailerPath, config, ffprobePath, cancellationToken).ConfigureAwait(false);
+
+        if (alreadyHadTrailer && !shouldSearch)
+        {
+            _logger.LogInformation("  > Trailer already exists, skipping.");
             return;
         }
 
@@ -493,7 +675,6 @@ public class FetchTrailersTask : IScheduledTask
         var fetchingTemplate = config.DryRun
             ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
             : "  > Fetching trailer via {Kind} ({Source})...";
-        var downloadSuccess = false;
 
         foreach (var source in sourcesToTry)
         {
@@ -540,7 +721,14 @@ public class FetchTrailersTask : IScheduledTask
             }
         }
 
-        if (downloadSuccess)
+        if (upgradeBackupPath is not null)
+        {
+            if (await ResolveTrailerUpgradeAsync(downloadSuccess, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight, ffprobePath, cancellationToken).ConfigureAwait(false))
+            {
+                stats.SeriesUpgraded++;
+            }
+        }
+        else if (downloadSuccess)
         {
             stats.SeriesDownloaded++;
         }
@@ -575,7 +763,9 @@ public class FetchTrailersTask : IScheduledTask
                 stats.SeriesNotFound,
                 stats.SeriesSkipped,
                 stats.MoviePhaseStarted,
-                stats.SeriesPhaseStarted));
+                stats.SeriesPhaseStarted,
+                stats.Upgraded,
+                stats.SeriesUpgraded));
 
         // "0" and "never got to it" look identical as a bare count otherwise - e.g. a
         // run that got rate-limited partway through movies, with series never
@@ -620,6 +810,11 @@ public class FetchTrailersTask : IScheduledTask
             {
                 _logger.LogInformation("  Migrated to Own Folder  : {Count}", stats.Migrated);
             }
+
+            if (stats.Upgraded > 0)
+            {
+                _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.Upgraded);
+            }
         }
 
         if (totalSeries > 0)
@@ -637,6 +832,11 @@ public class FetchTrailersTask : IScheduledTask
             if (stats.SeriesSkipped > 0)
             {
                 _logger.LogInformation("  Skipped (No Folder)     : {Count}", stats.SeriesSkipped);
+            }
+
+            if (stats.SeriesUpgraded > 0)
+            {
+                _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.SeriesUpgraded);
             }
         }
 
@@ -798,6 +998,8 @@ public class FetchTrailersTask : IScheduledTask
 
         public int Migrated { get; set; }
 
+        public int Upgraded { get; set; }
+
         public int SeriesScanned { get; set; }
 
         public int SeriesAlreadyHadTrailer { get; set; }
@@ -807,6 +1009,8 @@ public class FetchTrailersTask : IScheduledTask
         public int SeriesNotFound { get; set; }
 
         public int SeriesSkipped { get; set; }
+
+        public int SeriesUpgraded { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the movie loop was ever entered
