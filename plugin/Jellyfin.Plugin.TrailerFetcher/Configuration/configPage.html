@@ -10,160 +10,167 @@
             <div class="content-primary">
                 <form id="TrailerFetcherConfigForm">
                     <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Statistics</h3>
-                        <div id="LastRunSummaryHeader" class="fieldDescription">Loading&hellip;</div>
-                        <button is="emby-button" type="button" id="LastRunDetailsToggle" class="raised button-cancel block emby-button" style="margin-top: 0.5em;">
-                            <span>Details</span>
-                        </button>
-                        <div id="LastRunSummaryDetails" style="display:none; margin-top: 0.5em;"></div>
-                    </div>
-
-                    <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Scanning</h3>
-
-                        <h3 class="checkboxListLabel">Libraries</h3>
-                        <div id="LibrariesList" class="checkboxList">Loading libraries&hellip;</div>
-                        <div class="fieldDescription">Leave all unchecked to scan every library. Applies to both movies and TV series - only libraries actually containing them are useful here. Renaming and folder migration below only apply to movies; a TV series always already has its own folder.</div>
-
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="TriggerLibraryScan" name="TriggerLibraryScan" type="checkbox" is="emby-checkbox" />
-                                <span>Trigger a library scan after changes</span>
-                            </label>
-                            <div class="fieldDescription">Run a library scan immediately after a trailer is downloaded or a movie is moved, instead of waiting for the next scheduled scan.</div>
-                        </div>
-
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="MaxTrailerDurationSeconds">Maximum trailer duration (seconds)</label>
-                            <input id="MaxTrailerDurationSeconds" name="MaxTrailerDurationSeconds" type="number" is="emby-input" min="30" value="300" />
-                            <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
-                        </div>
-                    </div>
-
-                    <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Quality</h3>
-
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="MinTrailerResolution">Minimum trailer quality (p)</label>
-                            <input id="MinTrailerResolution" name="MinTrailerResolution" type="number" is="emby-input" min="144" value="720" />
-                            <div class="fieldDescription">
-                                The minimum acceptable trailer resolution, e.g. 720 for "720p". Only used when "Upgrade
-                                low-quality trailers" below is on.
-                            </div>
-                        </div>
-
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="UpgradeLowQualityTrailers" name="UpgradeLowQualityTrailers" type="checkbox" is="emby-checkbox" />
-                                <span>Upgrade low-quality trailers</span>
-                            </label>
-                            <div class="fieldDescription">
-                                Also re-check trailers that already exist: if one is below the minimum quality above,
-                                search for a better one. The existing file is only ever replaced by a genuinely
-                                higher-resolution download (both are compared after downloading) - a re-attempt that
-                                can't beat it, or that also lands on a low-quality fallback, leaves the original
-                                untouched. Off by default: this means re-running the full search/download flow for
-                                every under-quality trailer on every run until it clears the bar, not just once - more
-                                yt-dlp traffic, and so more rate-limit exposure, until the library catches up.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Organisation</h3>
-
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="RenameOriginal" name="RenameOriginal" type="checkbox" is="emby-checkbox" />
-                                <span>Rename original movie files</span>
-                            </label>
-                            <div class="fieldDescription">Rename the movie file to match its resolved title, e.g. "Movie Name (Year).ext".</div>
-                        </div>
-
-                        <div class="selectContainer">
-                            <label class="selectLabel" for="MigrateToFolders">Migrate movies into their own folder</label>
-                            <select is="emby-select" id="MigrateToFolders" name="MigrateToFolders" class="emby-select-withcolor emby-select">
-                                <option value="Disabled">Disabled</option>
-                                <option value="TrailersOnly">Only movies with a trailer</option>
-                                <option value="All">Every movie</option>
-                            </select>
-                            <div class="fieldDescription">
-                                Jellyfin only recognizes a local trailer file when the movie has its own dedicated folder
-                                (<a is="emby-linkbutton" class="button-link" href="https://github.com/jellyfin/jellyfin/issues/10077" target="_blank" rel="noopener noreferrer">jellyfin/jellyfin#10077</a>).
-                                A correctly named trailer sitting in a folder shared by other movies is silently ignored.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Network</h3>
-
-                        <div class="inputContainer">
-                            <label class="inputLabel">Cookies file</label>
-                            <div id="CookiesStatus" class="fieldDescription">No cookies file uploaded.</div>
-                            <input id="CookiesFileInput" type="file" accept=".txt" style="display:none" />
-                            <button is="emby-button" type="button" id="CookiesUploadButton" class="raised button-cancel block emby-button">
-                                <span>Upload cookies.txt</span>
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 0 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Statistics</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div id="LastRunSummaryHeader" class="fieldDescription">Loading&hellip;</div>
+                            <button is="emby-button" type="button" id="LastRunDetailsToggle" class="raised button-cancel block emby-button" style="margin-top: 0.5em;">
+                                <span>Details</span>
                             </button>
-                            <button is="emby-button" type="button" id="CookiesRemoveButton" class="raised button-cancel block emby-button" style="display:none">
-                                <span>Remove cookies file</span>
-                            </button>
-                            <div class="fieldDescription">
-                                Used by yt-dlp for authenticated/age-restricted YouTube access. No browser (Firefox, Chrome,
-                                Safari, ...) stores cookies as a plain file you can point to directly - Firefox keeps them in an
-                                SQLite database inside its profile folder, not a "cookies.txt". Export one instead: install the
-                                <a is="emby-linkbutton" class="button-link" href="https://addons.mozilla.org/firefox/addon/get-cookies-txt-locally/" target="_blank" rel="noopener noreferrer">"Get cookies.txt LOCALLY"</a>
-                                extension (also on the Chrome Web Store; avoid the plain "Get cookies.txt" one, it was pulled as
-                                malware), sign in to a YouTube account that's passed age verification, open youtube.com, and use
-                                the extension to export the current site's cookies as a Netscape-format cookies.txt - then upload
-                                that file here. Saved immediately on upload - not part of the Save button below.
-                            </div>
-                        </div>
-
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="RequestDelaySeconds">Delay between requests (seconds)</label>
-                            <input id="RequestDelaySeconds" name="RequestDelaySeconds" type="number" is="emby-input" min="0" value="3" />
-                            <div class="fieldDescription">
-                                Minimum wait before each yt-dlp request. A large library can add up to many separate
-                                requests with no pacing between them, which can trip YouTube's own rate limiting -
-                                that then blocks the whole session for up to an hour, with every remaining movie/series
-                                failing until it lifts. Lower this only if you're confident it won't happen; 0 disables
-                                the delay entirely.
-                            </div>
-                        </div>
-
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="RetryOnRateLimit" name="RetryOnRateLimit" type="checkbox" is="emby-checkbox" />
-                                <span>Retry once if rate-limited</span>
-                            </label>
-                            <div class="fieldDescription">If YouTube rate-limits the session anyway, wait, then retry the rest of the run exactly once instead of stopping immediately. There's no reliable way to know when the limit actually lifts - YouTube's own message only states an upper bound - so this is a single bounded retry, not a backoff loop: if the retry also gets rate-limited, the run stops for good.</div>
-                        </div>
-
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="RateLimitRetryDelayMinutes">Rate-limit retry delay (minutes)</label>
-                            <input id="RateLimitRetryDelayMinutes" name="RateLimitRetryDelayMinutes" type="number" is="emby-input" min="1" value="65" />
-                            <div class="fieldDescription">How long to wait before that single retry. Defaults to a bit past YouTube's own stated "up to an hour" ceiling - retrying too early just spends the one retry hitting the same still-active limit. Disabled unless "Retry once if rate-limited" above is on.</div>
+                            <div id="LastRunSummaryDetails" style="display:none; margin-top: 0.5em;"></div>
                         </div>
                     </div>
 
                     <div class="verticalSection">
-                        <h3 class="checkboxListLabel">Debugging and Testing</h3>
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Scanning</h3>
+                        <div style="padding-left: 1.25em;">
+                            <h3 class="checkboxListLabel">Libraries</h3>
+                            <div id="LibrariesList" class="checkboxList">Loading libraries&hellip;</div>
+                            <div class="fieldDescription">Leave all unchecked to scan every library. Applies to both movies and TV series - only libraries actually containing them are useful here. Renaming and folder migration below only apply to movies; a TV series always already has its own folder.</div>
 
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="DryRun" name="DryRun" type="checkbox" is="emby-checkbox" />
-                                <span>Dry run</span>
-                            </label>
-                            <div class="fieldDescription">Log what a manually triggered run would do, without downloading, renaming, or moving anything.</div>
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="TriggerLibraryScan" name="TriggerLibraryScan" type="checkbox" is="emby-checkbox" />
+                                    <span>Trigger a library scan after changes</span>
+                                </label>
+                                <div class="fieldDescription">Run a library scan immediately after a trailer is downloaded or a movie is moved, instead of waiting for the next scheduled scan.</div>
+                            </div>
+
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="MaxTrailerDurationSeconds">Maximum trailer duration (seconds)</label>
+                                <input id="MaxTrailerDurationSeconds" name="MaxTrailerDurationSeconds" type="number" is="emby-input" min="30" value="300" />
+                                <div class="fieldDescription">Search results longer than this are assumed to be a full movie or unrelated video, not a trailer.</div>
+                            </div>
                         </div>
+                    </div>
 
-                        <div class="checkboxContainer checkboxContainer-withDescription">
-                            <label class="emby-checkbox-label">
-                                <input id="VerboseLogging" name="VerboseLogging" type="checkbox" is="emby-checkbox" />
-                                <span>Verbose logging</span>
-                            </label>
-                            <div class="fieldDescription">Log each rejected search candidate's specific reason ("Title mismatch: ...", "Duration &gt; 300s: ..."). Off by default to keep a normal run's log readable - a movie/series needing several fallback searches can otherwise generate dozens of these lines. Turn on when diagnosing why a specific movie/series isn't finding a trailer it should.</div>
+                    <div class="verticalSection">
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Quality</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="MinTrailerResolution">Minimum trailer quality (p)</label>
+                                <input id="MinTrailerResolution" name="MinTrailerResolution" type="number" is="emby-input" min="144" value="720" />
+                                <div class="fieldDescription">
+                                    The minimum acceptable trailer resolution, e.g. 720 for "720p". Only used when "Upgrade
+                                    low-quality trailers" below is on.
+                                </div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="UpgradeLowQualityTrailers" name="UpgradeLowQualityTrailers" type="checkbox" is="emby-checkbox" />
+                                    <span>Upgrade low-quality trailers</span>
+                                </label>
+                                <div class="fieldDescription">
+                                    Also re-check trailers that already exist: if one is below the minimum quality above,
+                                    search for a better one. The existing file is only ever replaced by a genuinely
+                                    higher-resolution download (both are compared after downloading) - a re-attempt that
+                                    can't beat it, or that also lands on a low-quality fallback, leaves the original
+                                    untouched. Off by default: this means re-running the full search/download flow for
+                                    every under-quality trailer on every run until it clears the bar, not just once - more
+                                    yt-dlp traffic, and so more rate-limit exposure, until the library catches up.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Organisation</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="RenameOriginal" name="RenameOriginal" type="checkbox" is="emby-checkbox" />
+                                    <span>Rename original movie files</span>
+                                </label>
+                                <div class="fieldDescription">Rename the movie file to match its resolved title, e.g. "Movie Name (Year).ext".</div>
+                            </div>
+
+                            <div class="selectContainer">
+                                <label class="selectLabel" for="MigrateToFolders">Migrate movies into their own folder</label>
+                                <select is="emby-select" id="MigrateToFolders" name="MigrateToFolders" class="emby-select-withcolor emby-select">
+                                    <option value="Disabled">Disabled</option>
+                                    <option value="TrailersOnly">Only movies with a trailer</option>
+                                    <option value="All">Every movie</option>
+                                </select>
+                                <div class="fieldDescription">
+                                    Jellyfin only recognizes a local trailer file when the movie has its own dedicated folder
+                                    (<a is="emby-linkbutton" class="button-link" href="https://github.com/jellyfin/jellyfin/issues/10077" target="_blank" rel="noopener noreferrer">jellyfin/jellyfin#10077</a>).
+                                    A correctly named trailer sitting in a folder shared by other movies is silently ignored.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Network</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div class="inputContainer">
+                                <label class="inputLabel">Cookies file</label>
+                                <div id="CookiesStatus" class="fieldDescription">No cookies file uploaded.</div>
+                                <input id="CookiesFileInput" type="file" accept=".txt" style="display:none" />
+                                <button is="emby-button" type="button" id="CookiesUploadButton" class="raised button-cancel block emby-button">
+                                    <span>Upload cookies.txt</span>
+                                </button>
+                                <button is="emby-button" type="button" id="CookiesRemoveButton" class="raised button-cancel block emby-button" style="display:none">
+                                    <span>Remove cookies file</span>
+                                </button>
+                                <div class="fieldDescription">
+                                    Used by yt-dlp for authenticated/age-restricted YouTube access. No browser (Firefox, Chrome,
+                                    Safari, ...) stores cookies as a plain file you can point to directly - Firefox keeps them in an
+                                    SQLite database inside its profile folder, not a "cookies.txt". Export one instead: install the
+                                    <a is="emby-linkbutton" class="button-link" href="https://addons.mozilla.org/firefox/addon/get-cookies-txt-locally/" target="_blank" rel="noopener noreferrer">"Get cookies.txt LOCALLY"</a>
+                                    extension (also on the Chrome Web Store; avoid the plain "Get cookies.txt" one, it was pulled as
+                                    malware), sign in to a YouTube account that's passed age verification, open youtube.com, and use
+                                    the extension to export the current site's cookies as a Netscape-format cookies.txt - then upload
+                                    that file here. Saved immediately on upload - not part of the Save button below.
+                                </div>
+                            </div>
+
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="RequestDelaySeconds">Delay between requests (seconds)</label>
+                                <input id="RequestDelaySeconds" name="RequestDelaySeconds" type="number" is="emby-input" min="0" value="3" />
+                                <div class="fieldDescription">
+                                    Minimum wait before each yt-dlp request. A large library can add up to many separate
+                                    requests with no pacing between them, which can trip YouTube's own rate limiting -
+                                    that then blocks the whole session for up to an hour, with every remaining movie/series
+                                    failing until it lifts. Lower this only if you're confident it won't happen; 0 disables
+                                    the delay entirely.
+                                </div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="RetryOnRateLimit" name="RetryOnRateLimit" type="checkbox" is="emby-checkbox" />
+                                    <span>Retry once if rate-limited</span>
+                                </label>
+                                <div class="fieldDescription">If YouTube rate-limits the session anyway, wait, then retry the rest of the run exactly once instead of stopping immediately. There's no reliable way to know when the limit actually lifts - YouTube's own message only states an upper bound - so this is a single bounded retry, not a backoff loop: if the retry also gets rate-limited, the run stops for good.</div>
+                            </div>
+
+                            <div class="inputContainer" id="RateLimitRetryDelayContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="RateLimitRetryDelayMinutes">Rate-limit retry delay (minutes)</label>
+                                <input id="RateLimitRetryDelayMinutes" name="RateLimitRetryDelayMinutes" type="number" is="emby-input" min="1" value="65" />
+                                <div class="fieldDescription">How long to wait before that single retry. Defaults to a bit past YouTube's own stated "up to an hour" ceiling - retrying too early just spends the one retry hitting the same still-active limit. Disabled unless "Retry once if rate-limited" above is on.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Debugging and Testing</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="DryRun" name="DryRun" type="checkbox" is="emby-checkbox" />
+                                    <span>Dry run</span>
+                                </label>
+                                <div class="fieldDescription">Log what a manually triggered run would do, without downloading, renaming, or moving anything.</div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="VerboseLogging" name="VerboseLogging" type="checkbox" is="emby-checkbox" />
+                                    <span>Verbose logging</span>
+                                </label>
+                                <div class="fieldDescription">Log each rejected search candidate's specific reason ("Title mismatch: ...", "Duration &gt; 300s: ..."). Off by default to keep a normal run's log readable - a movie/series needing several fallback searches can otherwise generate dozens of these lines. Turn on when diagnosing why a specific movie/series isn't finding a trailer it should.</div>
+                            </div>
                         </div>
                     </div>
 
@@ -197,7 +204,13 @@
             }
 
             function updateRateLimitRetryDelayEnabled() {
-                document.querySelector('#RateLimitRetryDelayMinutes').disabled = !document.querySelector('#RetryOnRateLimit').checked;
+                // .disabled alone isn't visibly obvious here - this page has no
+                // stylesheet to back a :disabled look (see the note above on
+                // <style> blocks being dropped), so the dimming is applied directly
+                // as an inline style on the whole field, not just the input.
+                var enabled = document.querySelector('#RetryOnRateLimit').checked;
+                document.querySelector('#RateLimitRetryDelayMinutes').disabled = !enabled;
+                document.querySelector('#RateLimitRetryDelayContainer').style.opacity = enabled ? '' : '0.45';
             }
 
             function loadLibraries(selectedIds) {

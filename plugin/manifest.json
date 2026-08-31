@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.25.0",
+        "changelog": "Two visual fixes to 0.8.23.0's settings-page reorg, confirmed live. (1) Group headings (\"Scanning\", \"Quality\", ...) were barely distinguishable from regular field labels since they reused the same styling - they're now visibly bigger/bolder with an underline, and each group's fields are indented beneath it so the grouping is actually readable at a glance. (2) The \"Rate-limit retry delay\" field's disabled state (when \"Retry once if rate-limited\" is off) wasn't visually obvious - this page has no stylesheet backing a :disabled look (a <style> block gets dropped by Jellyfin's dashboard injection), so the whole field is now explicitly dimmed via inline style, toggled live with the checkbox. Verified both in a real browser against a local stub of the actual configPage.html.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.25.0.zip",
+        "checksum": "4fa7c384309ef439c2f72fe5f32916c1",
+        "timestamp": "2026-08-31T20:42:07Z"
+      },
+      {
         "version": "0.8.24.0",
         "changelog": "Fixed a movie being silently skipped over a missing file extension. Confirmed live: \"Operation Broken Arrow.mpg\" - a legitimate older DVD-era rip - was rejected outright (\"Not a video file (extension: .mpg)\") and never got a trailer at all, purely because .mpg wasn't in the recognized-video-extensions list. Added .mpg plus the rest of the common real-world video containers that list was also missing (.mpeg, .flv, .3gp, .3g2, .divx, .asf, .rm, .rmvb, .mts, .m2v, .ogv), not just the one that happened to get reported.",
         "targetAbi": "10.11.0.0",
