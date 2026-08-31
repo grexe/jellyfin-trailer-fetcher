@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.19.0"
+version: "0.8.20.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,21 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.20.0: Two fixes from last night's live run, confirmed against the actual log.
+  (1) The "retry once if rate-limited" flag never re-armed after a successful retry:
+  once used, it stayed used for the rest of the run, so a large backlog that
+  re-triggers YouTube's rate limit a second time later in the same run gave up
+  immediately instead of getting its own retry. It now resets after every
+  movie/series that completes without hitting the limit again - proof the limit
+  actually lifted, not just a lucky moment - so each new rate-limit encounter gets
+  its own single retry, same as the first. (2) The settings page and log summary
+  showed "0" for TV series stats when the run got rate-limited/cancelled entirely
+  during the movies phase (movies are always processed first) and series were never
+  reached at all - indistinguishable from "reached every series and matched none".
+  Both now show "n/a" for a phase that was never started, distinct from a genuine
+  zero count.
+
+
   0.8.19.0: Fixed a cosmetic logging quirk: a movie sitting directly in the library
   root (no subfolder) made "*** Entering directory: ." print a bare "." instead of a
   useful name, since Path.GetRelativePath returns "." when the two paths are equal.

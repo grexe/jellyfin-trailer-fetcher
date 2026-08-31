@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.20.0",
+        "changelog": "Two fixes from last night's live run, confirmed against the actual log. (1) The \"retry once if rate-limited\" flag never re-armed after a successful retry: once used, it stayed used for the rest of the run, so a large backlog that re-triggers YouTube's rate limit a second time later in the same run gave up immediately instead of getting its own retry. It now resets after every movie/series that completes without hitting the limit again - proof the limit actually lifted, not just a lucky moment - so each new rate-limit encounter gets its own single retry, same as the first. (2) The settings page and log summary showed \"0\" for TV series stats when the run got rate-limited/cancelled entirely during the movies phase (movies are always processed first) and series were never reached at all - indistinguishable from \"reached every series and matched none\". Both now show \"n/a\" for a phase that was never started, distinct from a genuine zero count.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.20.0.zip",
+        "checksum": "c7ccd67d9171c31fa7f826adce050aeb",
+        "timestamp": "2026-08-31T18:30:56Z"
+      },
+      {
         "version": "0.8.19.0",
         "changelog": "Fixed a cosmetic logging quirk: a movie sitting directly in the library root (no subfolder) made \"*** Entering directory: .\" print a bare \".\" instead of a useful name, since Path.GetRelativePath returns \".\" when the two paths are equal. PathDisplay.Relative now falls back to the library root's own folder name in that case, the same way every subfolder is already shown by its own name rather than a path fragment.",
         "targetAbi": "10.11.0.0",

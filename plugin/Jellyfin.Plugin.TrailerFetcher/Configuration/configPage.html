@@ -225,6 +225,18 @@
 
                     var rows = [];
 
+                    // "0" and "never got to it" look identical as a bare count
+                    // otherwise - e.g. a run that got rate-limited partway through
+                    // movies, with series never touched, would show "Series
+                    // processed: 0" exactly like a run that reached every series and
+                    // matched none. moviesScanStarted/seriesScanStarted are missing
+                    // (undefined) on summaries saved before this distinction existed -
+                    // treat that the same as true, so old summaries keep showing their
+                    // real counts.
+                    function fmt(phaseStarted, count) {
+                        return phaseStarted === false ? 'n/a' : count;
+                    }
+
                     // Only the libraries actually in scope for this run get a section -
                     // a run scoped to series-only libraries showing "Total movies in
                     // library: 0" reads as if something's wrong rather than as "no
@@ -232,10 +244,10 @@
                     if (summary.totalMovies > 0) {
                         rows.push({ section: 'Movies' });
                         rows.push({ label: 'Total movies in library', value: summary.totalMovies });
-                        rows.push({ label: 'Movies processed', value: summary.scanned });
-                        rows.push({ label: 'Already had trailer', value: summary.alreadyHadTrailer });
-                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.downloaded });
-                        rows.push({ label: 'No trailer found', value: summary.notFound });
+                        rows.push({ label: 'Movies processed', value: fmt(summary.moviesScanStarted, summary.scanned) });
+                        rows.push({ label: 'Already had trailer', value: fmt(summary.moviesScanStarted, summary.alreadyHadTrailer) });
+                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: fmt(summary.moviesScanStarted, summary.downloaded) });
+                        rows.push({ label: 'No trailer found', value: fmt(summary.moviesScanStarted, summary.notFound) });
                         if (summary.skipped > 0) {
                             rows.push({ label: 'Skipped (unreachable)', value: summary.skipped });
                         }
@@ -252,10 +264,10 @@
                     if (summary.totalSeries > 0) {
                         rows.push({ section: 'TV series' });
                         rows.push({ label: 'Total series in library', value: summary.totalSeries });
-                        rows.push({ label: 'Series processed', value: summary.seriesScanned });
-                        rows.push({ label: 'Already had trailer', value: summary.seriesAlreadyHadTrailer });
-                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: summary.seriesDownloaded });
-                        rows.push({ label: 'No trailer found', value: summary.seriesNotFound });
+                        rows.push({ label: 'Series processed', value: fmt(summary.seriesScanStarted, summary.seriesScanned) });
+                        rows.push({ label: 'Already had trailer', value: fmt(summary.seriesScanStarted, summary.seriesAlreadyHadTrailer) });
+                        rows.push({ label: summary.dryRun ? 'Trailers found (dry run)' : 'Trailers downloaded', value: fmt(summary.seriesScanStarted, summary.seriesDownloaded) });
+                        rows.push({ label: 'No trailer found', value: fmt(summary.seriesScanStarted, summary.seriesNotFound) });
                         if (summary.seriesSkipped > 0) {
                             rows.push({ label: 'Skipped (no folder)', value: summary.seriesSkipped });
                         }

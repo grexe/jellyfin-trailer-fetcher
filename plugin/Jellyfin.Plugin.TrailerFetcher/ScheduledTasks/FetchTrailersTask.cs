@@ -136,18 +136,29 @@ public class FetchTrailersTask : IScheduledTask
         {
             try
             {
+                stats.MoviePhaseStarted = true;
                 for (; movieIndex < movies.Count; movieIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await ProcessMovieAsync(movies[movieIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
                     progress.Report((movieIndex + 1) * 100.0 / totalItems);
+
+                    // A movie/series that completes without hitting the rate limit again
+                    // is proof the limit actually lifted, not just that we got lucky once
+                    // - re-arm the single retry so a *later* rate limit in this same run
+                    // (a large backlog can plausibly retrigger it more than once) gets its
+                    // own chance to wait-and-resume too, instead of always giving up
+                    // immediately after the first retry has ever been used.
+                    hasRetriedRateLimit = false;
                 }
 
+                stats.SeriesPhaseStarted = true;
                 for (; seriesIndex < series.Count; seriesIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
                     progress.Report((movies.Count + seriesIndex + 1) * 100.0 / totalItems);
+                    hasRetriedRateLimit = false;
                 }
 
                 break;
@@ -562,7 +573,15 @@ public class FetchTrailersTask : IScheduledTask
                 stats.SeriesAlreadyHadTrailer,
                 stats.SeriesDownloaded,
                 stats.SeriesNotFound,
-                stats.SeriesSkipped));
+                stats.SeriesSkipped,
+                stats.MoviePhaseStarted,
+                stats.SeriesPhaseStarted));
+
+        // "0" and "never got to it" look identical as a bare count otherwise - e.g. a
+        // run that got rate-limited partway through movies, with series never
+        // touched, would show "Series Processed: 0" exactly like a run that reached
+        // every series and matched none.
+        static object Fmt(bool phaseStarted, int count) => phaseStarted ? count : "n/a";
 
         _logger.LogInformation(string.Empty);
         _logger.LogInformation("==========================================");
@@ -583,10 +602,10 @@ public class FetchTrailersTask : IScheduledTask
         if (totalMovies > 0)
         {
             _logger.LogInformation("  Total Movies in Library : {Count}", totalMovies);
-            _logger.LogInformation("  Movies Processed        : {Count}", stats.Scanned);
-            _logger.LogInformation("  Already had Trailer     : {Count}", stats.AlreadyHadTrailer);
-            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", stats.Downloaded);
-            _logger.LogInformation("  No Trailer Found        : {Count}", stats.NotFound);
+            _logger.LogInformation("  Movies Processed        : {Count}", Fmt(stats.MoviePhaseStarted, stats.Scanned));
+            _logger.LogInformation("  Already had Trailer     : {Count}", Fmt(stats.MoviePhaseStarted, stats.AlreadyHadTrailer));
+            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", Fmt(stats.MoviePhaseStarted, stats.Downloaded));
+            _logger.LogInformation("  No Trailer Found        : {Count}", Fmt(stats.MoviePhaseStarted, stats.NotFound));
             if (stats.Skipped > 0)
             {
                 _logger.LogInformation("  Skipped (Unreachable)   : {Count}", stats.Skipped);
@@ -611,10 +630,10 @@ public class FetchTrailersTask : IScheduledTask
             }
 
             _logger.LogInformation("  Total Series in Library : {Count}", totalSeries);
-            _logger.LogInformation("  Series Processed        : {Count}", stats.SeriesScanned);
-            _logger.LogInformation("  Already had Trailer     : {Count}", stats.SeriesAlreadyHadTrailer);
-            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", stats.SeriesDownloaded);
-            _logger.LogInformation("  No Trailer Found        : {Count}", stats.SeriesNotFound);
+            _logger.LogInformation("  Series Processed        : {Count}", Fmt(stats.SeriesPhaseStarted, stats.SeriesScanned));
+            _logger.LogInformation("  Already had Trailer     : {Count}", Fmt(stats.SeriesPhaseStarted, stats.SeriesAlreadyHadTrailer));
+            _logger.LogInformation(dryRun ? "  Trailers Found (Dry-Run): {Count}" : "  Trailers Downloaded     : {Count}", Fmt(stats.SeriesPhaseStarted, stats.SeriesDownloaded));
+            _logger.LogInformation("  No Trailer Found        : {Count}", Fmt(stats.SeriesPhaseStarted, stats.SeriesNotFound));
             if (stats.SeriesSkipped > 0)
             {
                 _logger.LogInformation("  Skipped (No Folder)     : {Count}", stats.SeriesSkipped);
@@ -788,5 +807,21 @@ public class FetchTrailersTask : IScheduledTask
         public int SeriesNotFound { get; set; }
 
         public int SeriesSkipped { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the movie loop was ever entered
+        /// this run - false only if the run stopped (cancelled/rate-limited) before
+        /// reaching it at all, which the movie counts above can't distinguish from
+        /// "genuinely processed zero" on their own.
+        /// </summary>
+        public bool MoviePhaseStarted { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the series loop was ever entered
+        /// this run - false if the run stopped while still working through movies
+        /// (movies are always processed first), which otherwise looks identical to
+        /// "128 series in scope, 0 matched" in the summary.
+        /// </summary>
+        public bool SeriesPhaseStarted { get; set; }
     }
 }

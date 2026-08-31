@@ -10,6 +10,13 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 /// settings page. <c>StopReason</c> is null if the run processed everything in scope;
 /// otherwise why it stopped early (e.g. "Cancelled", "YouTube rate-limited this
 /// session") - whatever was found up to that point is still reflected in the counts.
+/// <c>MoviesScanStarted</c>/<c>SeriesScanStarted</c> distinguish "this phase was
+/// never reached" (run stopped before it, e.g. rate-limited mid-movies with series
+/// never touched) from "reached and genuinely processed/found zero" - both look
+/// identical as a bare 0 in the *Scanned/*AlreadyHadTrailer/*Downloaded/*NotFound
+/// counts otherwise. Default true for summaries saved before this distinction
+/// existed, so old summaries keep showing their real (possibly zero) counts rather
+/// than turning into "n/a" retroactively.
 /// </summary>
 public record RunSummary(
     [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc,
@@ -29,7 +36,9 @@ public record RunSummary(
     [property: JsonPropertyName("seriesAlreadyHadTrailer")] int SeriesAlreadyHadTrailer = 0,
     [property: JsonPropertyName("seriesDownloaded")] int SeriesDownloaded = 0,
     [property: JsonPropertyName("seriesNotFound")] int SeriesNotFound = 0,
-    [property: JsonPropertyName("seriesSkipped")] int SeriesSkipped = 0);
+    [property: JsonPropertyName("seriesSkipped")] int SeriesSkipped = 0,
+    [property: JsonPropertyName("moviesScanStarted")] bool MoviesScanStarted = true,
+    [property: JsonPropertyName("seriesScanStarted")] bool SeriesScanStarted = true);
 
 /// <summary>
 /// Persists the most recent run's summary (the same numbers logged as the "TRAILER SYNC
