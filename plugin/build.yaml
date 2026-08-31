@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.15.0"
+version: "0.8.16.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,15 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.16.0: Trimmed the rate-limit ERROR log line. 0.8.15.0's log included yt-dlp's
+  entire raw warning paragraph verbatim - a lead-in sentence, the actual rate-limit
+  notice, then yt-dlp's own "-t sleep" suggestion and a wiki URL, most of which is
+  noise once our own message already explains what's happening and why. Now logs
+  just the one sentence that matters ("The current session has been rate-limited by
+  YouTube for up to an hour.") plus a short reason for stopping early. No behavior
+  change, log output only.
+
+
   0.8.15.0: Handle YouTube's own rate limiting instead of grinding through it.
   Confirmed live on a long run: once YouTube rate-limits a session ("The current
   session has been rate-limited by YouTube for up to an hour"), no client/format

@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.16.0",
+        "changelog": "Trimmed the rate-limit ERROR log line. 0.8.15.0's log included yt-dlp's entire raw warning paragraph verbatim - a lead-in sentence, the actual rate-limit notice, then yt-dlp's own \"-t sleep\" suggestion and a wiki URL, most of which is noise once our own message already explains what's happening and why. Now logs just the one sentence that matters (\"The current session has been rate-limited by YouTube for up to an hour.\") plus a short reason for stopping early. No behavior change, log output only.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.16.0.zip",
+        "checksum": "50bf323a4ad21d15bcf700d27f6650da",
+        "timestamp": "2026-08-31T00:03:04Z"
+      },
+      {
         "version": "0.8.15.0",
         "changelog": "Handle YouTube's own rate limiting instead of grinding through it. Confirmed live on a long run: once YouTube rate-limits a session (\"The current session has been rate-limited by YouTube for up to an hour\"), no client/format fallback helps, and continuing on to retry other clients or move to the next movie/series just wastes time against a block that won't lift itself any sooner - possibly making it worse. YtDlpClient now detects this specific condition and throws a distinct YouTubeRateLimitedException that propagates straight past every retry tier and out of the movie/series loop, stopping the whole run early - with whatever was found before it hit still logged/persisted the same way a cancelled run's partial summary already is (RunSummary's Aborted flag is now a StopReason string so the summary/log can say \"YouTube rate-limited this session\" specifically, not just \"cancelled\"). Also added a \"Delay between requests\" setting (default 3s, configurable, 0 disables it) - a plain per-invocation delay before every yt-dlp call, sized for this plugin's actual pattern of many short-lived separate invocations rather than yt-dlp's own \"-t sleep\" preset (which sleeps up to 20s per download, tuned for one long-running session working through a playlist).",
         "targetAbi": "10.11.0.0",

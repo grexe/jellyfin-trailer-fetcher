@@ -147,9 +147,8 @@ public class FetchTrailersTask : IScheduledTask
         {
             stopReason = "YouTube rate-limited this session";
             _logger.LogError(
-                "YouTube has rate-limited this session - stopping the run early rather than continuing to " +
-                "hit the same limit for every remaining movie/series (which wouldn't help, and risks making " +
-                "it worse). Detail: {Detail}",
+                "{Detail} Stopping the run early rather than grinding through every remaining movie/series " +
+                "against the same limit.",
                 ex.Message);
         }
 
