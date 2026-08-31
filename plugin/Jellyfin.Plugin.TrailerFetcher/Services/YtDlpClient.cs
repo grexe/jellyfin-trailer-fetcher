@@ -332,6 +332,119 @@ public class YtDlpClient
         }
     }
 
+    /// <summary>
+    /// Download a specific video URL's audio only into <paramref name="destinationPath"/>,
+    /// extracted to mp3 - used for theme songs (see <see cref="ThemerrDbClient"/>), not
+    /// trailers. Uses the same three-tier client fallback as <see cref="DownloadAsync"/>
+    /// and for the same reasons (age-restriction via cookies, then a conservative
+    /// fallback client) - kept as a fully separate method rather than parametrizing
+    /// DownloadAsync/DownloadOnceAsync, so this new, less-tested path can't regress the
+    /// existing trailer download path.
+    /// </summary>
+    public async Task<bool> DownloadAudioAsync(string url, string destinationPath, CancellationToken cancellationToken)
+    {
+        if (await DownloadAudioOnceAsync(url, destinationPath, playerClientOverride: null, cancellationToken).ConfigureAwait(false))
+        {
+            return true;
+        }
+
+        var hasCookies = !string.IsNullOrEmpty(_cookiesFilePath) && File.Exists(_cookiesFilePath);
+        if (hasCookies)
+        {
+            _logger.LogInformation("  > Retrying theme song download with player_client=web (cookies configured)...");
+            if (await DownloadAudioOnceAsync(url, destinationPath, playerClientOverride: "web", cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
+        }
+
+        _logger.LogInformation("  > Retrying theme song download with a more conservative client (mweb)...");
+        return await DownloadAudioOnceAsync(url, destinationPath, playerClientOverride: "mweb", cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> DownloadAudioOnceAsync(string url, string destinationPath, string? playerClientOverride, CancellationToken cancellationToken)
+    {
+        var tmpDir = Directory.CreateTempSubdirectory("trailer-fetcher-theme-");
+        try
+        {
+            var tmpPattern = Path.Combine(tmpDir.FullName, "theme.%(ext)s");
+            var args = new List<string>
+            {
+                "-f", "bestaudio/best",
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--no-part",
+                "-o", tmpPattern
+            };
+            args.AddRange(CommonArgs());
+            if (playerClientOverride is not null)
+            {
+                args.Add("--extractor-args");
+                args.Add($"youtube:player_client={playerClientOverride}");
+            }
+
+            args.Add(url);
+
+            var (_, _, stderr) = await RunAsync(args, cancellationToken).ConfigureAwait(false);
+
+            var downloadedFile = Directory.EnumerateFiles(tmpDir.FullName)
+                .Where(f => new FileInfo(f).Length > 0)
+                .FirstOrDefault();
+
+            if (downloadedFile is null)
+            {
+                var stderrLines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                var firstError = stderrLines.FirstOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal));
+                _logger.LogWarning("  > No theme song downloaded for {Url} ({Error}).", url, firstError ?? "unknown error");
+                foreach (var warningLine in stderrLines.Where(l => l.Contains("WARNING", StringComparison.Ordinal)))
+                {
+                    _logger.LogWarning("  > {WarningLine}", warningLine);
+                }
+
+                return false;
+            }
+
+            var tmpDest = destinationPath + ".part";
+            try
+            {
+                File.Copy(downloadedFile, tmpDest, overwrite: true);
+                File.Move(tmpDest, destinationPath, overwrite: true);
+            }
+            catch (IOException e)
+            {
+                _logger.LogWarning("  > Copy to destination failed: {Error}", e.Message);
+                return false;
+            }
+            finally
+            {
+                if (File.Exists(tmpDest))
+                {
+                    File.Delete(tmpDest);
+                }
+            }
+
+            if (File.Exists(destinationPath) && new FileInfo(destinationPath).Length > 0)
+            {
+                _logger.LogInformation("  > Theme song successfully saved: {Name}", Path.GetFileName(destinationPath));
+                return true;
+            }
+
+            _logger.LogWarning("  > Copy failed or file is empty on remote: {Path}", destinationPath);
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                tmpDir.Delete(recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup; a leftover temp dir is harmless.
+            }
+        }
+    }
+
     private async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(List<string> args, CancellationToken cancellationToken)
     {
         if (_requestDelay > TimeSpan.Zero)

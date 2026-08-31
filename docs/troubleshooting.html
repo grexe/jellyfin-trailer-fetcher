@@ -95,6 +95,27 @@
     automatically).
   </p>
 
+  <h2>A movie isn't getting a theme song</h2>
+  <p>
+    Check in order:
+  </p>
+  <ol>
+    <li>Is <a href="configuration.html">Fetch theme songs</a> actually on?</li>
+    <li>Does the movie have a TMDb id? Series and movies matched purely by folder name/local metadata
+      without an online TMDb match won't have one.</li>
+    <li>Is the movie in its own dedicated folder? Unlike trailers, a theme song is only fetched once a
+      movie is confirmed to have one, since <code>theme.mp3</code> is a fixed filename that would otherwise
+      get shared (and misattributed) across every movie in the same folder — see
+      <a href="how-it-works.html#theme-songs">How It Works: theme songs</a>. Turn on
+      <a href="configuration.html">Migrate movies into their own folder</a>. TV series don't have this
+      restriction, they always already have their own folder.</li>
+    <li>Does <a href="https://github.com/LizardByte/ThemerrDB">ThemerrDB</a> actually have an entry for this
+      item? It's community-curated, not exhaustive - you can check directly at
+      <code>https://app.lizardbyte.dev/ThemerrDB/movies/themoviedb/&lt;tmdbId&gt;.json</code> (or
+      <code>tv_shows</code> for a series). If there's nothing there, there's nothing this plugin can fetch;
+      ThemerrDB's own contribution process is the way to add one.</li>
+  </ol>
+
   <h2>Provisioning fails ("Could not automatically provision yt-dlp")</h2>
   <p>
     The plugin downloads <code>yt-dlp</code>/<code>deno</code> from their GitHub releases on first use —

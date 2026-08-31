@@ -101,6 +101,28 @@
                     </div>
 
                     <div class="verticalSection">
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Theme Songs</h3>
+                        <div style="padding-left: 1.25em;">
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="FetchThemeSongs" name="FetchThemeSongs" type="checkbox" is="emby-checkbox" />
+                                    <span>Fetch theme songs</span>
+                                </label>
+                                <div class="fieldDescription">
+                                    Also download a local theme song (<code>theme.mp3</code>) for each movie/series,
+                                    looked up on <a is="emby-linkbutton" class="button-link" href="https://github.com/LizardByte/ThemerrDB" target="_blank" rel="noopener noreferrer">ThemerrDB</a>
+                                    by TMDb id - the same community-curated database the Themerr-jellyfin plugin uses,
+                                    so an item only gets a theme song here if Themerr would have offered one too. The
+                                    lookup is the only thing shared with Themerr; the download itself goes through
+                                    this plugin's own yt-dlp pipeline instead of Themerr's downloader. An item with no
+                                    TMDb id, or no ThemerrDB entry, is silently skipped - this never touches an
+                                    existing theme.mp3, whether user-provided or already downloaded by Themerr.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
                         <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Network</h3>
                         <div style="padding-left: 1.25em;">
                             <div class="inputContainer">
@@ -331,6 +353,12 @@
                         if (summary.upgraded > 0) {
                             rows.push({ label: 'Trailers upgraded', value: summary.upgraded });
                         }
+
+                        if (summary.themeSongAlreadyHad + summary.themeSongDownloaded + summary.themeSongNotFound > 0) {
+                            rows.push({ label: 'Theme songs already had', value: summary.themeSongAlreadyHad });
+                            rows.push({ label: 'Theme songs downloaded', value: summary.themeSongDownloaded });
+                            rows.push({ label: 'Theme songs not found', value: summary.themeSongNotFound });
+                        }
                     }
 
                     if (summary.totalSeries > 0) {
@@ -346,6 +374,12 @@
 
                         if (summary.seriesUpgraded > 0) {
                             rows.push({ label: 'Trailers upgraded', value: summary.seriesUpgraded });
+                        }
+
+                        if (summary.seriesThemeSongAlreadyHad + summary.seriesThemeSongDownloaded + summary.seriesThemeSongNotFound > 0) {
+                            rows.push({ label: 'Theme songs already had', value: summary.seriesThemeSongAlreadyHad });
+                            rows.push({ label: 'Theme songs downloaded', value: summary.seriesThemeSongDownloaded });
+                            rows.push({ label: 'Theme songs not found', value: summary.seriesThemeSongNotFound });
                         }
                     }
 
@@ -452,6 +486,7 @@
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         document.querySelector('#UpgradeLowQualityTrailers').checked = config.UpgradeLowQualityTrailers;
                         document.querySelector('#MinTrailerResolution').value = config.MinTrailerResolution;
+                        document.querySelector('#FetchThemeSongs').checked = config.FetchThemeSongs;
                         document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
                         document.querySelector('#RetryOnRateLimit').checked = config.RetryOnRateLimit;
                         document.querySelector('#RateLimitRetryDelayMinutes').value = config.RateLimitRetryDelayMinutes;
@@ -529,6 +564,7 @@
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
                         config.UpgradeLowQualityTrailers = document.querySelector('#UpgradeLowQualityTrailers').checked;
                         config.MinTrailerResolution = parseInt(document.querySelector('#MinTrailerResolution').value, 10);
+                        config.FetchThemeSongs = document.querySelector('#FetchThemeSongs').checked;
                         config.RequestDelaySeconds = parseInt(document.querySelector('#RequestDelaySeconds').value, 10);
                         config.RetryOnRateLimit = document.querySelector('#RetryOnRateLimit').checked;
                         config.RateLimitRetryDelayMinutes = parseInt(document.querySelector('#RateLimitRetryDelayMinutes').value, 10);

@@ -40,7 +40,13 @@ public record RunSummary(
     [property: JsonPropertyName("moviesScanStarted")] bool MoviesScanStarted = true,
     [property: JsonPropertyName("seriesScanStarted")] bool SeriesScanStarted = true,
     [property: JsonPropertyName("upgraded")] int Upgraded = 0,
-    [property: JsonPropertyName("seriesUpgraded")] int SeriesUpgraded = 0);
+    [property: JsonPropertyName("seriesUpgraded")] int SeriesUpgraded = 0,
+    [property: JsonPropertyName("themeSongAlreadyHad")] int ThemeSongAlreadyHad = 0,
+    [property: JsonPropertyName("themeSongDownloaded")] int ThemeSongDownloaded = 0,
+    [property: JsonPropertyName("themeSongNotFound")] int ThemeSongNotFound = 0,
+    [property: JsonPropertyName("seriesThemeSongAlreadyHad")] int SeriesThemeSongAlreadyHad = 0,
+    [property: JsonPropertyName("seriesThemeSongDownloaded")] int SeriesThemeSongDownloaded = 0,
+    [property: JsonPropertyName("seriesThemeSongNotFound")] int SeriesThemeSongNotFound = 0);
 
 /// <summary>
 /// Persists the most recent run's summary (the same numbers logged as the "TRAILER SYNC

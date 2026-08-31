@@ -112,6 +112,28 @@
   </div>
 
   <div class="setting-group">
+    <h3>Theme Songs</h3>
+
+    <div class="setting">
+      <span class="name">Fetch theme songs</span><span class="default">default: off</span>
+      <p>
+        Also downloads a local theme song (<code>theme.mp3</code>) for each movie/series, looked up on
+        <a href="https://github.com/LizardByte/ThemerrDB">ThemerrDB</a> by TMDb id - the same
+        community-curated database the <a href="https://github.com/LizardByte/Themerr-jellyfin">Themerr-jellyfin</a>
+        plugin uses, so an item only gets a theme song here if Themerr would have offered one too. Only the
+        lookup is shared with Themerr; the download itself goes through this plugin's own <code>yt-dlp</code>
+        pipeline (see <a href="how-it-works.html#theme-songs">How It Works</a>) instead of Themerr's
+        downloader, which fails outright on plenty of videos <code>yt-dlp</code> handles fine.
+      </p>
+      <p>
+        An item with no TMDb id, no ThemerrDB entry, or not in its own dedicated folder is silently skipped -
+        this never touches an existing <code>theme.mp3</code>, whether user-provided or already downloaded by
+        Themerr.
+      </p>
+    </div>
+  </div>
+
+  <div class="setting-group">
     <h3>Network</h3>
 
     <div class="setting">

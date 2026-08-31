@@ -13,6 +13,7 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
@@ -117,6 +118,7 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         var ytDlp = await BuildYtDlpClientAsync(config, ffmpegDir, cancellationToken).ConfigureAwait(false);
+        var themerrDb = new ThemerrDbClient(_httpClientFactory, _logger);
         var stats = new TrailerFetchStats();
         var totalItems = movies.Count + series.Count;
         var startedAt = DateTime.UtcNow;
@@ -150,7 +152,7 @@ public class FetchTrailersTask : IScheduledTask
                 for (; movieIndex < movies.Count; movieIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessMovieAsync(movies[movieIndex], config, ytDlp, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
+                    await ProcessMovieAsync(movies[movieIndex], config, ytDlp, themerrDb, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
                     progress.Report((movieIndex + 1) * 100.0 / totalItems);
 
                     // A movie/series that completes without hitting the rate limit again
@@ -166,7 +168,7 @@ public class FetchTrailersTask : IScheduledTask
                 for (; seriesIndex < series.Count; seriesIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
+                    await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, themerrDb, stats, ffprobePath, cancellationToken).ConfigureAwait(false);
                     progress.Report((movies.Count + seriesIndex + 1) * 100.0 / totalItems);
                     hasRetriedRateLimit = false;
                 }
@@ -218,21 +220,24 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         // Trigger a single library scan (not one per movie/series) so Jellyfin picks up
-        // every newly downloaded trailer file, and any moved/migrated paths, in one pass.
+        // every newly downloaded trailer/theme song file, and any moved/migrated paths,
+        // in one pass.
         if (config.TriggerLibraryScan && !config.DryRun)
         {
             var downloaded = stats.Downloaded + stats.SeriesDownloaded;
-            if (downloaded > 0 || stats.Migrated > 0)
+            var themeSongsDownloaded = stats.ThemeSongDownloaded + stats.SeriesThemeSongDownloaded;
+            if (downloaded > 0 || stats.Migrated > 0 || themeSongsDownloaded > 0)
             {
                 _logger.LogInformation(
-                    "Triggering a Jellyfin library scan to pick up {Downloaded} new trailer(s) and {Migrated} migrated movie(s)...",
+                    "Triggering a Jellyfin library scan to pick up {Downloaded} new trailer(s), {ThemeSongs} new theme song(s), and {Migrated} migrated movie(s)...",
                     downloaded,
+                    themeSongsDownloaded,
                     stats.Migrated);
                 _libraryManager.QueueLibraryScan();
             }
             else
             {
-                _logger.LogInformation("No new trailers or migrations; skipping Jellyfin library scan.");
+                _logger.LogInformation("No new trailers, theme songs, or migrations; skipping Jellyfin library scan.");
             }
         }
     }
@@ -278,7 +283,7 @@ public class FetchTrailersTask : IScheduledTask
         return new YtDlpClient(managedYtDlp, managedDeno, config.CookiesFilePath, ffmpegDir, config.RequestDelaySeconds, _logger);
     }
 
-    private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
+    private async Task ProcessMovieAsync(Movie movie, PluginConfiguration config, YtDlpClient ytDlp, ThemerrDbClient themerrDb, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
     {
         var rawTitle = string.IsNullOrEmpty(movie.Name) ? "Unknown" : movie.Name;
         var localPath = movie.Path;
@@ -447,13 +452,42 @@ public class FetchTrailersTask : IScheduledTask
         // (pre-existing or just downloaded), leaving the rest of a flat library untouched.
         var shouldMigrate = config.MigrateToFolders == MigrationMode.All ||
                              (config.MigrateToFolders == MigrationMode.TrailersOnly && (alreadyHadTrailer || downloadSuccess));
+        var themeSongFolder = folderPath;
         if (shouldMigrate)
         {
-            var (_, moved) = MovieFileOperations.MigrateToOwnFolder(localPath, config.DryRun, [safeTitle], libraryRoot, _logger);
+            var (newLocalPath, moved) = MovieFileOperations.MigrateToOwnFolder(localPath, config.DryRun, [safeTitle], libraryRoot, _logger);
             if (moved)
             {
                 stats.Migrated++;
+                themeSongFolder = Path.GetDirectoryName(newLocalPath) ?? folderPath;
             }
+        }
+
+        // Unlike "<title>-trailer.ext", "theme.mp3" is a fixed filename with no
+        // per-movie disambiguation - downloading it into a folder shared by other
+        // movies wouldn't just go unrecognized by Jellyfin like an un-migrated trailer
+        // does, it would actively misattribute one movie's theme song to every other
+        // movie sharing that folder (first one processed "wins" the shared file,
+        // every other movie sees "already had" and never gets its own). So this only
+        // runs once the movie is verifiably in its own dedicated folder - after
+        // migration (if any) this run, so a theme song downloaded now lands in the
+        // movie's final folder directly rather than needing to be swept along by
+        // MigrateToOwnFolder, which wouldn't recognize "theme.mp3" as this movie's
+        // file anyway (not tied to its title stem the way IsSidecarOf checks for).
+        var movieHasOwnFolder = string.Equals(
+            Path.GetFileName(themeSongFolder),
+            Path.GetFileNameWithoutExtension(localPath),
+            StringComparison.Ordinal);
+        if (config.FetchThemeSongs && !movieHasOwnFolder)
+        {
+            _logger.LogInformation(
+                "  > Skipping theme song: movie isn't in its own dedicated folder (see \"Migrate movies into their own folder\") - a shared folder would misattribute theme.mp3 between movies.");
+            ApplyThemeSongOutcome(ThemeSongOutcome.NotFound, stats, isSeries: false);
+        }
+        else
+        {
+            var themeOutcome = await FetchThemeSongAsync(movie, themeSongFolder, isSeries: false, config, ytDlp, themerrDb, cancellationToken).ConfigureAwait(false);
+            ApplyThemeSongOutcome(themeOutcome, stats, isSeries: false);
         }
     }
 
@@ -597,6 +631,117 @@ public class FetchTrailersTask : IScheduledTask
         }
     }
 
+    private enum ThemeSongOutcome
+    {
+        /// <summary>Theme song fetching is off in configuration; nothing was attempted.</summary>
+        Disabled,
+
+        /// <summary>A theme.mp3 already existed - untouched, whether user-provided or from a previous run.</summary>
+        AlreadyHad,
+
+        /// <summary>A theme song was found on ThemerrDB and (dry run aside) downloaded successfully.</summary>
+        Downloaded,
+
+        /// <summary>No TMDb id, no ThemerrDB entry for it, or the download itself failed.</summary>
+        NotFound
+    }
+
+    /// <summary>
+    /// Fetches a local theme song (<c>theme.mp3</c>) for a movie/series via ThemerrDB
+    /// (see <see cref="ThemerrDbClient"/>), if enabled. Shared between movies and
+    /// series - the logic has no movie/series-specific behavior beyond which ThemerrDB
+    /// endpoint to query, unlike trailers, since there's no title/duration/keyword
+    /// filtering to do here (ThemerrDB's own curators already did that).
+    /// </summary>
+    private async Task<ThemeSongOutcome> FetchThemeSongAsync(
+        BaseItem item,
+        string folderPath,
+        bool isSeries,
+        PluginConfiguration config,
+        YtDlpClient ytDlp,
+        ThemerrDbClient themerrDb,
+        CancellationToken cancellationToken)
+    {
+        if (!config.FetchThemeSongs)
+        {
+            return ThemeSongOutcome.Disabled;
+        }
+
+        var themePath = Path.Combine(folderPath, "theme.mp3");
+        if (File.Exists(themePath))
+        {
+            return ThemeSongOutcome.AlreadyHad;
+        }
+
+        if (!item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId) || string.IsNullOrEmpty(tmdbId))
+        {
+            return ThemeSongOutcome.NotFound;
+        }
+
+        // Matches trailer fetching's own dry-run behavior: no network calls at all, so
+        // a dry run stays free of side effects and instant.
+        if (config.DryRun)
+        {
+            _logger.LogInformation("  > [DRY-RUN] Would look up and fetch a theme song from ThemerrDB if available.");
+            return ThemeSongOutcome.Downloaded;
+        }
+
+        var themeUrl = isSeries
+            ? await themerrDb.GetSeriesThemeUrlAsync(tmdbId, cancellationToken).ConfigureAwait(false)
+            : await themerrDb.GetMovieThemeUrlAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+
+        if (string.IsNullOrEmpty(themeUrl))
+        {
+            return ThemeSongOutcome.NotFound;
+        }
+
+        _logger.LogInformation("  > Fetching theme song from ThemerrDB ({Url})...", themeUrl);
+        var success = await ytDlp.DownloadAudioAsync(themeUrl, themePath, cancellationToken).ConfigureAwait(false);
+        return success ? ThemeSongOutcome.Downloaded : ThemeSongOutcome.NotFound;
+    }
+
+    private static void ApplyThemeSongOutcome(ThemeSongOutcome outcome, TrailerFetchStats stats, bool isSeries)
+    {
+        switch (outcome)
+        {
+            case ThemeSongOutcome.AlreadyHad:
+                if (isSeries)
+                {
+                    stats.SeriesThemeSongAlreadyHad++;
+                }
+                else
+                {
+                    stats.ThemeSongAlreadyHad++;
+                }
+
+                break;
+            case ThemeSongOutcome.Downloaded:
+                if (isSeries)
+                {
+                    stats.SeriesThemeSongDownloaded++;
+                }
+                else
+                {
+                    stats.ThemeSongDownloaded++;
+                }
+
+                break;
+            case ThemeSongOutcome.NotFound:
+                if (isSeries)
+                {
+                    stats.SeriesThemeSongNotFound++;
+                }
+                else
+                {
+                    stats.ThemeSongNotFound++;
+                }
+
+                break;
+            case ThemeSongOutcome.Disabled:
+                break;
+        }
+    }
+
     /// <summary>
     /// Processes a single TV series: tries its official RemoteTrailers, then a
     /// multi-stage YouTube search (see <see cref="TrailerSources"/>), same duration/
@@ -610,7 +755,7 @@ public class FetchTrailersTask : IScheduledTask
     /// apply, and validity is a folder-exists check rather than
     /// <see cref="MovieFileOperations.IsValidMediaFile"/>.
     /// </summary>
-    private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
+    private async Task ProcessSeriesAsync(Series series, PluginConfiguration config, YtDlpClient ytDlp, ThemerrDbClient themerrDb, TrailerFetchStats stats, string? ffprobePath, CancellationToken cancellationToken)
     {
         var rawTitle = string.IsNullOrEmpty(series.Name) ? "Unknown" : series.Name;
         var seriesPath = series.Path;
@@ -668,6 +813,8 @@ public class FetchTrailersTask : IScheduledTask
         if (alreadyHadTrailer && !shouldSearch)
         {
             _logger.LogInformation("  > Trailer already exists, skipping.");
+            var earlyThemeOutcome = await FetchThemeSongAsync(series, seriesPath, isSeries: true, config, ytDlp, themerrDb, cancellationToken).ConfigureAwait(false);
+            ApplyThemeSongOutcome(earlyThemeOutcome, stats, isSeries: true);
             return;
         }
 
@@ -736,6 +883,9 @@ public class FetchTrailersTask : IScheduledTask
         {
             stats.SeriesNotFound++;
         }
+
+        var themeOutcome = await FetchThemeSongAsync(series, seriesPath, isSeries: true, config, ytDlp, themerrDb, cancellationToken).ConfigureAwait(false);
+        ApplyThemeSongOutcome(themeOutcome, stats, isSeries: true);
     }
 
     private void LogSummary(TrailerFetchStats stats, int totalMovies, int totalSeries, bool dryRun, DateTime startedAt, string? stopReason)
@@ -765,7 +915,13 @@ public class FetchTrailersTask : IScheduledTask
                 stats.MoviePhaseStarted,
                 stats.SeriesPhaseStarted,
                 stats.Upgraded,
-                stats.SeriesUpgraded));
+                stats.SeriesUpgraded,
+                stats.ThemeSongAlreadyHad,
+                stats.ThemeSongDownloaded,
+                stats.ThemeSongNotFound,
+                stats.SeriesThemeSongAlreadyHad,
+                stats.SeriesThemeSongDownloaded,
+                stats.SeriesThemeSongNotFound));
 
         // "0" and "never got to it" look identical as a bare count otherwise - e.g. a
         // run that got rate-limited partway through movies, with series never
@@ -815,6 +971,11 @@ public class FetchTrailersTask : IScheduledTask
             {
                 _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.Upgraded);
             }
+
+            if (stats.ThemeSongAlreadyHad + stats.ThemeSongDownloaded + stats.ThemeSongNotFound > 0)
+            {
+                _logger.LogInformation("  Theme Songs (had/new/not found): {AlreadyHad}/{Downloaded}/{NotFound}", stats.ThemeSongAlreadyHad, stats.ThemeSongDownloaded, stats.ThemeSongNotFound);
+            }
         }
 
         if (totalSeries > 0)
@@ -837,6 +998,11 @@ public class FetchTrailersTask : IScheduledTask
             if (stats.SeriesUpgraded > 0)
             {
                 _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.SeriesUpgraded);
+            }
+
+            if (stats.SeriesThemeSongAlreadyHad + stats.SeriesThemeSongDownloaded + stats.SeriesThemeSongNotFound > 0)
+            {
+                _logger.LogInformation("  Theme Songs (had/new/not found): {AlreadyHad}/{Downloaded}/{NotFound}", stats.SeriesThemeSongAlreadyHad, stats.SeriesThemeSongDownloaded, stats.SeriesThemeSongNotFound);
             }
         }
 
@@ -1000,6 +1166,12 @@ public class FetchTrailersTask : IScheduledTask
 
         public int Upgraded { get; set; }
 
+        public int ThemeSongAlreadyHad { get; set; }
+
+        public int ThemeSongDownloaded { get; set; }
+
+        public int ThemeSongNotFound { get; set; }
+
         public int SeriesScanned { get; set; }
 
         public int SeriesAlreadyHadTrailer { get; set; }
@@ -1011,6 +1183,12 @@ public class FetchTrailersTask : IScheduledTask
         public int SeriesSkipped { get; set; }
 
         public int SeriesUpgraded { get; set; }
+
+        public int SeriesThemeSongAlreadyHad { get; set; }
+
+        public int SeriesThemeSongDownloaded { get; set; }
+
+        public int SeriesThemeSongNotFound { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the movie loop was ever entered

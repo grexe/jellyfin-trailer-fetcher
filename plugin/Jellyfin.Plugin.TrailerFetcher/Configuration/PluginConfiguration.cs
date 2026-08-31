@@ -53,6 +53,7 @@ public class PluginConfiguration : BasePluginConfiguration
         RateLimitRetryDelayMinutes = 65;
         UpgradeLowQualityTrailers = false;
         MinTrailerResolution = 720;
+        FetchThemeSongs = false;
     }
 
     /// <summary>
@@ -172,4 +173,19 @@ public class PluginConfiguration : BasePluginConfiguration
     /// to decide which existing trailers are worth trying to replace.
     /// </summary>
     public int MinTrailerResolution { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to also fetch a local theme song
+    /// (<c>theme.mp3</c>) for each movie/series, looked up on
+    /// <see href="https://github.com/LizardByte/ThemerrDB">ThemerrDB</see> by TMDb id -
+    /// the same community-curated database the Themerr-jellyfin plugin uses, so an
+    /// item only gets a theme song here if Themerr would have offered one too. Only the
+    /// lookup is shared with Themerr; the download itself goes through this plugin's
+    /// own yt-dlp pipeline (rate-limit pacing, retry, client fallback) instead of
+    /// Themerr's YoutubeExplode-based downloader, which fails outright on plenty of
+    /// videos yt-dlp handles fine. An item with no TMDb id, or no ThemerrDB entry, is
+    /// silently skipped - this never blocks or replaces an existing theme.mp3, whether
+    /// user-provided or downloaded by Themerr previously. Off by default.
+    /// </summary>
+    public bool FetchThemeSongs { get; set; }
 }

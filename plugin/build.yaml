@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.25.0"
+version: "0.8.26.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,23 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.26.0: Added an opt-in "Fetch theme songs" setting. When on, each movie/series
+  also gets a local theme.mp3, looked up on ThemerrDB
+  (https://github.com/LizardByte/ThemerrDB) by TMDb id - the same community-curated
+  database the Themerr-jellyfin plugin uses, so an item only gets a theme song here
+  if Themerr would have offered one too. Only the lookup is shared with Themerr; the
+  download goes through this plugin's own yt-dlp pipeline (rate-limit pacing, retry,
+  client fallback) instead of Themerr's YoutubeExplode-based downloader, which fails
+  outright on plenty of videos yt-dlp handles fine (the trigger for this feature:
+  confirmed live, Themerr's own log showed
+  YoutubeExplode.Exceptions.VideoUnavailableException on a video that downloaded
+  without issue via yt-dlp). A movie only gets a theme song once it's confirmed to
+  be in its own dedicated folder - unlike a trailer's per-movie filename, theme.mp3
+  is a fixed name that would otherwise be misattributed across every movie sharing a
+  folder; a TV series always already has its own folder. An existing theme.mp3,
+  whether user-provided or from Themerr, is never touched. Off by default.
+
+
   0.8.25.0: Two visual fixes to 0.8.23.0's settings-page reorg, confirmed live. (1)
   Group headings ("Scanning", "Quality", ...) were barely distinguishable from
   regular field labels since they reused the same styling - they're now visibly

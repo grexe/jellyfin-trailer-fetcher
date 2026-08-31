@@ -40,6 +40,10 @@ dashboard instead of a `.env` file.
 - **Optional file organisation** - can rename the original movie file to match its resolved title, and/or migrate a
   movie into its own subfolder, which Jellyfin requires to recognize a local trailer at all when movies otherwise
   share a flat folder ([jellyfin/jellyfin#10077](https://github.com/jellyfin/jellyfin/issues/10077)).
+- **Theme songs** - optionally fetches a local `theme.mp3` too, looked up on
+  [ThemerrDB](https://github.com/LizardByte/ThemerrDB) (the same curated database the
+  [Themerr-jellyfin](https://github.com/LizardByte/Themerr-jellyfin) plugin uses) and downloaded through this
+  plugin's own hardened `yt-dlp` pipeline instead of Themerr's less reliable downloader.
 - **Cookies support** for authenticated/age-restricted YouTube access.
 - **Dry-run mode** to preview a run without downloading, renaming, or moving anything.
 - **Per-run summary** on the settings page - what was found, downloaded, skipped, or upgraded, and why a run
@@ -71,6 +75,7 @@ Settings are grouped on the plugin's page:
 - **Quality** - the minimum acceptable trailer resolution, and whether to re-check/upgrade existing trailers that
   fall short of it.
 - **Organisation** - renaming the original movie file and/or migrating movies into their own folder.
+- **Theme Songs** - whether to also fetch a local theme song via ThemerrDB.
 - **Network** - a cookies file for authenticated/age-restricted access, pacing between requests, and the
   rate-limit retry behavior.
 - **Debugging and Testing** - dry-run mode and verbose per-candidate logging.
@@ -94,3 +99,12 @@ Builds the plugin and produces a versioned zip under `plugin/dist/`. See
 The original Python script this plugin grew out of is still in this repository - see the root
 [`src/`](src/) and [`pyproject.toml`](pyproject.toml). It's no longer actively developed; new work goes into the
 plugin.
+
+## Credits
+
+Theme song lookups use [ThemerrDB](https://github.com/LizardByte/ThemerrDB) © LizardByte, licensed under
+[BSD-3-Clause](https://github.com/LizardByte/ThemerrDB/blob/master/LICENSE) - a community-curated, publicly
+hosted database mapping movies/TV shows to their theme song's YouTube URL, the same one the
+[Themerr-jellyfin](https://github.com/LizardByte/Themerr-jellyfin) plugin uses. Only the data is used (a plain
+HTTP lookup at runtime, no API key); none of this plugin's download code is derived from Themerr-jellyfin's own
+source, and this project isn't affiliated with or endorsed by LizardByte.

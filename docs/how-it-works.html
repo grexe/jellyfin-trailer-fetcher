@@ -123,13 +123,42 @@
     already has its own dedicated folder.
   </p>
 
-  <h2>7. Summary and library scan</h2>
+  <h2 id="theme-songs">7. Theme songs (optional)</h2>
+  <p>
+    With <a href="configuration.html">Fetch theme songs</a> on, each movie/series also gets a local
+    <code>theme.mp3</code> — but the source is different from trailers. Rather than searching YouTube, the
+    item's TMDb id is looked up directly on <a href="https://github.com/LizardByte/ThemerrDB">ThemerrDB</a>,
+    a static, community-curated, daily-updated database that maps items straight to the correct theme song's
+    YouTube URL — the same database the <a href="https://github.com/LizardByte/Themerr-jellyfin">Themerr-jellyfin</a>
+    plugin uses. No title/duration/keyword filtering happens here, since ThemerrDB's own curators already
+    picked the right video; if there's no entry for an item, no theme song is fetched for it.
+  </p>
+  <p>
+    The download itself goes through the exact same <code>yt-dlp</code> pipeline as trailers (audio
+    extracted to mp3) — pacing, client-fallback tiers, and rate-limit handling all apply the same way. This
+    is the actual point of the feature: Themerr downloads the same ThemerrDB URLs using
+    <a href="https://github.com/Tyrrrz/YoutubeExplode">YoutubeExplode</a>, a pure C# reimplementation of
+    YouTube's extraction logic that isn't actively maintained against YouTube's anti-bot changes the way
+    <code>yt-dlp</code> is, and fails outright on plenty of videos <code>yt-dlp</code> handles without
+    issue.
+  </p>
+  <p>
+    A movie is only ever given a theme song once it's confirmed to be in its own dedicated folder (after
+    folder migration, if any, this run) — unlike a trailer's <code>&lt;title&gt;-trailer.mp4</code>,
+    <code>theme.mp3</code> is a fixed filename with no per-movie disambiguation, so downloading it into a
+    folder shared by other movies would misattribute one movie's theme song to every other movie in that
+    folder. A TV series always already has its own folder, so this restriction only affects movies. An
+    existing <code>theme.mp3</code> — whether you placed it yourself or Themerr downloaded it previously —
+    is always left untouched.
+  </p>
+
+  <h2>8. Summary and library scan</h2>
   <p>
     At the end of a run, a summary is logged and saved for the settings page's <a
-    href="configuration.html">Statistics</a> section — counts of scanned/downloaded/upgraded/skipped for
-    movies and series separately, and why the run stopped early if it did. If anything was downloaded or
-    moved and <a href="configuration.html">Trigger a library scan</a> is on, a single Jellyfin library scan
-    is triggered so the changes show up immediately.
+    href="configuration.html">Statistics</a> section — counts of scanned/downloaded/upgraded/skipped (and
+    theme songs, if enabled) for movies and series separately, and why the run stopped early if it did. If
+    anything was downloaded or moved and <a href="configuration.html">Trigger a library scan</a> is on, a
+    single Jellyfin library scan is triggered so the changes show up immediately.
   </p>
 
   <h2>Dependencies</h2>

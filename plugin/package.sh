@@ -50,7 +50,7 @@ cat <<EOF
       "version": "$VERSION",
       "changelog": "See commit history.",
       "targetAbi": "$TARGET_ABI",
-      "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/${ZIP_NAME}",
+      "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/${ZIP_NAME}",
       "checksum": "$CHECKSUM",
       "timestamp": "$TIMESTAMP"
     }
