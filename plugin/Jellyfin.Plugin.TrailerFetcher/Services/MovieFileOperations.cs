@@ -16,7 +16,12 @@ public static class MovieFileOperations
 {
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".m2ts", ".iso", ".vob"
+        ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".m2ts", ".iso", ".vob",
+        // Confirmed live: an older DVD-era rip (.mpg) was skipped outright ("Not a video
+        // file") purely because it was missing here, never getting a trailer at all.
+        // Rounded out with the rest of the legitimate real-world video containers this
+        // list was already missing, not just the one that happened to be reported.
+        ".mpg", ".mpeg", ".flv", ".3gp", ".3g2", ".divx", ".asf", ".rm", ".rmvb", ".mts", ".m2v", ".ogv"
     };
 
     private static readonly HashSet<string> IgnoredDirNames = new(StringComparer.OrdinalIgnoreCase)

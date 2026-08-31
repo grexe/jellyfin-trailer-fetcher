@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.23.0"
+version: "0.8.24.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,15 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.24.0: Fixed a movie being silently skipped over a missing file extension.
+  Confirmed live: "Operation Broken Arrow.mpg" - a legitimate older DVD-era rip -
+  was rejected outright ("Not a video file (extension: .mpg)") and never got a
+  trailer at all, purely because .mpg wasn't in the recognized-video-extensions
+  list. Added .mpg plus the rest of the common real-world video containers that
+  list was also missing (.mpeg, .flv, .3gp, .3g2, .divx, .asf, .rm, .rmvb, .mts,
+  .m2v, .ogv), not just the one that happened to get reported.
+
+
   0.8.23.0: Reorganized the settings page for readability - purely cosmetic, no
   configuration keys changed. The last-run summary now shows just the one-line
   header (date, duration, stop reason) with the full per-movie/series breakdown
