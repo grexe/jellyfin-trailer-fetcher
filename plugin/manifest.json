@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.27.0",
+        "changelog": "Fixed a permission error crashing the entire run instead of just skipping the affected item. Confirmed live: a theme song download hit System.UnauthorizedAccessException on the underlying NFS share, and it propagated all the way out of the scheduled task - crashing the whole run, not just that one movie's theme song. Root cause: UnauthorizedAccessException does not inherit from IOException in .NET (verified directly - reproduced a real permission-denied File.Copy locally and confirmed its exact exception type), so every \"catch (IOException ...)\" around a file operation in this codebase - trailer rename/migrate, trailer/theme song download, trailer upgrade backup/restore - silently let a permission-denied failure through uncaught. Broadened every one of them (14 call sites across MovieFileOperations.cs, FetchTrailersTask.cs, and YtDlpClient.cs) to also catch UnauthorizedAccessException. Also fixed a second, subtler instance of the same gap: the temp-file cleanup in a `finally` block after a failed copy/move wasn't wrapped in any try/catch at all, so even after fixing the primary catch, that cleanup step alone (deleting the same permission-denied file) could still crash the run on its own - now handled the same way.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.27.0.zip",
+        "checksum": "21f47a6e97cbf4e900a9f9395de92a3c",
+        "timestamp": "2026-08-31T22:39:51Z"
+      },
+      {
         "version": "0.8.26.0",
         "changelog": "Added an opt-in \"Fetch theme songs\" setting. When on, each movie/series also gets a local theme.mp3, looked up on ThemerrDB (https://github.com/LizardByte/ThemerrDB) by TMDb id - the same community-curated database the Themerr-jellyfin plugin uses, so an item only gets a theme song here if Themerr would have offered one too. Only the lookup is shared with Themerr; the download goes through this plugin's own yt-dlp pipeline (rate-limit pacing, retry, client fallback) instead of Themerr's YoutubeExplode-based downloader, which fails outright on plenty of videos yt-dlp handles fine (the trigger for this feature: confirmed live, Themerr's own log showed YoutubeExplode.Exceptions.VideoUnavailableException on a video that downloaded without issue via yt-dlp). A movie only gets a theme song once it's confirmed to be in its own dedicated folder - unlike a trailer's per-movie filename, theme.mp3 is a fixed name that would otherwise be misattributed across every movie sharing a folder; a TV series always already has its own folder. An existing theme.mp3, whether user-provided or from Themerr, is never touched. Off by default.",
         "targetAbi": "10.11.0.0",

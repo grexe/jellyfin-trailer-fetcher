@@ -52,7 +52,7 @@ public static class MovieFileOperations
         {
             fileSize = new FileInfo(localPath).Length;
         }
-        catch (IOException e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             reason = $"Could not determine file size: {e.Message}";
             return false;
@@ -149,7 +149,7 @@ public static class MovieFileOperations
                     localPath = Path.Combine(targetFolder, Path.GetFileName(localPath));
                     folderPath = targetFolder;
                 }
-                catch (IOException e)
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
                     logger.LogError("  > Failed to rename folder {Folder}: {Error}", PathDisplay.Relative(folderPath, libraryRoot), e.Message);
                     targetMoviePath = Path.Combine(folderPath, $"{safeTitle}{ext}");
@@ -174,7 +174,7 @@ public static class MovieFileOperations
             logger.LogInformation("  > Original file renamed to: {Name}", Path.GetFileName(targetMoviePath));
             return (targetMoviePath, true);
         }
-        catch (IOException e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             logger.LogError("  > Failed to rename file for {Title}: {Error}", safeTitle, e.Message);
             return (localPath, false);
@@ -228,7 +228,7 @@ public static class MovieFileOperations
         {
             siblingNames = Directory.GetFiles(currentDir).Select(Path.GetFileName).ToArray()!;
         }
-        catch (IOException e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning("  > Could not list {Dir} for migration: {Error}", PathDisplay.Relative(currentDir, libraryRoot), e.Message);
             return (localPath, false);
@@ -253,7 +253,7 @@ public static class MovieFileOperations
         {
             Directory.CreateDirectory(targetDir);
         }
-        catch (IOException e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             logger.LogError("  > Failed to create folder {Dir}: {Error}", PathDisplay.Relative(targetDir, libraryRoot), e.Message);
             return (localPath, false);
@@ -283,7 +283,7 @@ public static class MovieFileOperations
                     newLocalPath = dst;
                 }
             }
-            catch (IOException e)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 logger.LogError(
                     "  > Failed to move {Src} to {Dst}: {Error}",

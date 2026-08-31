@@ -297,16 +297,29 @@ public class YtDlpClient
                 File.Copy(downloadedFile, tmpDest, overwrite: true);
                 File.Move(tmpDest, destinationPath, overwrite: true);
             }
-            catch (IOException e)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 _logger.LogWarning("  > Copy to destination failed: {Error}", e.Message);
                 return false;
             }
             finally
             {
-                if (File.Exists(tmpDest))
+                // The same permission/locking condition that could make Copy/Move fail
+                // above can just as easily make this cleanup Delete fail too - confirmed
+                // live, this exact call is what actually crashed a run (naming the
+                // ".part" file) even after the catch above was already handling
+                // Copy/Move failures, since a finally block's own exception isn't
+                // caught by its try's catch clauses.
+                try
                 {
-                    File.Delete(tmpDest);
+                    if (File.Exists(tmpDest))
+                    {
+                        File.Delete(tmpDest);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("  > Could not remove leftover temp file {Path}: {Error}", tmpDest, ex.Message);
                 }
             }
 
@@ -325,7 +338,7 @@ public class YtDlpClient
             {
                 tmpDir.Delete(recursive: true);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Best-effort cleanup; a leftover temp dir is harmless.
             }
@@ -410,16 +423,29 @@ public class YtDlpClient
                 File.Copy(downloadedFile, tmpDest, overwrite: true);
                 File.Move(tmpDest, destinationPath, overwrite: true);
             }
-            catch (IOException e)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 _logger.LogWarning("  > Copy to destination failed: {Error}", e.Message);
                 return false;
             }
             finally
             {
-                if (File.Exists(tmpDest))
+                // The same permission/locking condition that could make Copy/Move fail
+                // above can just as easily make this cleanup Delete fail too - confirmed
+                // live, this exact call is what actually crashed a run (naming the
+                // ".part" file) even after the catch above was already handling
+                // Copy/Move failures, since a finally block's own exception isn't
+                // caught by its try's catch clauses.
+                try
                 {
-                    File.Delete(tmpDest);
+                    if (File.Exists(tmpDest))
+                    {
+                        File.Delete(tmpDest);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("  > Could not remove leftover temp file {Path}: {Error}", tmpDest, ex.Message);
                 }
             }
 
@@ -438,7 +464,7 @@ public class YtDlpClient
             {
                 tmpDir.Delete(recursive: true);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Best-effort cleanup; a leftover temp dir is harmless.
             }

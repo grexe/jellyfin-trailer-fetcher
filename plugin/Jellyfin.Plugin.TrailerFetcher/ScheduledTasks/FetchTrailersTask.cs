@@ -534,7 +534,7 @@ public class FetchTrailersTask : IScheduledTask
         {
             File.Move(existingTrailerPath, upgradeBackupPath, overwrite: true);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // e.g. the file is locked because it's actively being streamed right now -
             // skip the upgrade attempt for this one item rather than letting an
@@ -580,7 +580,7 @@ public class FetchTrailersTask : IScheduledTask
             {
                 File.Delete(upgradeBackupPath);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Non-fatal: the new (better) trailer is already saved at
                 // trailerFilename, so the movie/series is left with a valid trailer
@@ -616,7 +616,7 @@ public class FetchTrailersTask : IScheduledTask
 
             File.Move(upgradeBackupPath, existingTrailerPath, overwrite: true);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The backup is still sitting at upgradeBackupPath either way (Jellyfin's
             // local-extras resolver won't recognize its ".upgrading" name as a
