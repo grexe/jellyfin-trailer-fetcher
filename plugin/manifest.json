@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.19.0",
+        "changelog": "Fixed a cosmetic logging quirk: a movie sitting directly in the library root (no subfolder) made \"*** Entering directory: .\" print a bare \".\" instead of a useful name, since Path.GetRelativePath returns \".\" when the two paths are equal. PathDisplay.Relative now falls back to the library root's own folder name in that case, the same way every subfolder is already shown by its own name rather than a path fragment.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.19.0.zip",
+        "checksum": "dbd69098bdee455f8b148d61521e9deb",
+        "timestamp": "2026-08-31T18:21:49Z"
+      },
+      {
         "version": "0.8.18.0",
         "changelog": "A run that gets YouTube-rate-limited can now wait and retry once instead of always stopping immediately. There's no reliable way to know when the limit actually lifts - YouTube's own message only states an upper bound (\"...for up to an hour\") - so this is a single bounded retry, not a backoff loop: on the first rate limit, the run waits a configurable delay (new \"Rate-limit retry delay\" setting, default 65 minutes - a bit past YouTube's own stated ceiling) and then resumes the same run from wherever it stopped (not a full restart), controlled by a new \"Retry once if rate-limited\" toggle (on by default). If the retry also gets rate-limited, the run stops for good rather than waiting and retrying again - continuing to hammer an apparently-still-active limit doesn't help and risks making it worse.",
         "targetAbi": "10.11.0.0",

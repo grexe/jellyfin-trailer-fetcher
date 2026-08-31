@@ -25,7 +25,23 @@ public static class PathDisplay
             // GetRelativePath returns an unrelated-looking result (starting with "..")
             // when fullPath isn't actually under libraryRoot - fall back to the full
             // path rather than showing something confusing.
-            return relative.StartsWith("..", StringComparison.Ordinal) ? fullPath : relative;
+            if (relative.StartsWith("..", StringComparison.Ordinal))
+            {
+                return fullPath;
+            }
+
+            if (relative != ".")
+            {
+                return relative;
+            }
+
+            // A movie sitting directly in the library root (no subfolder) makes
+            // fullPath == libraryRoot, so GetRelativePath returns "." - not useful on
+            // its own in a log line ("*** Entering directory: ."). Show the library
+            // root's own folder name instead, the same way every other directory here
+            // is shown by its own name rather than a path fragment.
+            var rootName = Path.GetFileName(libraryRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return string.IsNullOrEmpty(rootName) ? libraryRoot : rootName;
         }
         catch (ArgumentException)
         {
