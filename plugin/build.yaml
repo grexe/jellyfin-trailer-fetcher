@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.28.0"
+version: "0.8.29.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,21 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.29.0: Made 0.8.28.0's permission/group matching genuinely POSIX-portable
+  instead of Linux-only, per feedback that the underlying mechanisms don't actually
+  need Linux specifically. File.GetUnixFileMode/SetUnixFileMode is a portable .NET
+  API that works on any Unix-like target - verified directly, it already worked
+  correctly on macOS once unblocked. The only genuinely non-portable part was
+  `chgrp --reference=`, a GNU-only extension BSD's chgrp (macOS) doesn't support -
+  replaced with resolving the reference file's numeric group id via `stat` (its
+  format flag differs between BSD/macOS `-f` and GNU/Linux `-c`, handled
+  per-platform, both verified directly) and passing that plain number to `chgrp`,
+  which is standard usage on every chgrp implementation. Verified the whole thing
+  end to end on macOS, including the file-vs-directory execute-bit handling
+  (a directory reference's execute bit correctly carries over to a new directory
+  target but is correctly stripped when the target is a regular file).
+
+
   0.8.28.0: Root-caused and fixed the actual permission problem behind 0.8.27.0,
   rather than only handling the failure gracefully. Confirmed live: media added to
   the library by different users/processes (e.g. copied in over SMB as one user,

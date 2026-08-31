@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using Microsoft.Extensions.Logging;
 
@@ -18,11 +19,14 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 /// however a given deployment is actually set up.
 ///
 /// Never changes the file's OWNER (uid) - that generally requires root, which this
-/// plugin shouldn't need or want. Linux only (no-op elsewhere): group changes here
-/// shell out to `chgrp`, a POSIX utility not guaranteed present/equivalent on
-/// Windows, and this whole scenario - multi-user Unix permission drift under a
-/// Jellyfin deployment - is a server-side concern that doesn't apply to local
-/// development on macOS/Windows anyway. Best-effort throughout: any failure here
+/// plugin shouldn't need or want. No-op on Windows, where Unix ownership/permission
+/// bits don't apply. Otherwise POSIX-portable, not Linux-specific: permission bits
+/// use .NET's own cross-platform File.GetUnixFileMode/SetUnixFileMode, and group
+/// matching resolves the reference file's numeric group id via `stat` (its format
+/// flag differs between BSD/macOS and GNU/Linux, handled below) and passes that
+/// plain number to `chgrp` - deliberately not `chgrp --reference=`, which is a
+/// GNU-only extension BSD's chgrp (macOS) doesn't support; a bare numeric group id
+/// is standard `chgrp` usage everywhere. Best-effort throughout: any failure here
 /// is logged and otherwise ignored, never blocking or failing the trailer/theme
 /// song fetch that created the file/folder in the first place.
 /// </summary>
@@ -31,7 +35,7 @@ public static class UnixPermissions
     /// <summary>Matches <paramref name="newPath"/>'s permission bits and group to <paramref name="referencePath"/>'s.</summary>
     public static void MatchTo(string newPath, string referencePath, ILogger logger)
     {
-        if (!OperatingSystem.IsLinux())
+        if (OperatingSystem.IsWindows())
         {
             return;
         }
@@ -55,6 +59,12 @@ public static class UnixPermissions
             logger.LogWarning("  > Could not match permission bits on {Path} to {Reference}: {Error}", newPath, referencePath, ex.Message);
         }
 
+        var gid = GetGroupId(referencePath, logger);
+        if (gid is null)
+        {
+            return;
+        }
+
         try
         {
             var psi = new ProcessStartInfo("chgrp")
@@ -63,7 +73,7 @@ public static class UnixPermissions
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
-            psi.ArgumentList.Add($"--reference={referencePath}");
+            psi.ArgumentList.Add(gid.Value.ToString(CultureInfo.InvariantCulture));
             psi.ArgumentList.Add(newPath);
 
             using var process = Process.Start(psi);
@@ -85,6 +95,53 @@ public static class UnixPermissions
             // for whichever process/user actually created it, just not necessarily
             // for others sharing the reference file's group.
             logger.LogWarning("  > Could not run chgrp for {Path}: {Error}", newPath, ex.Message);
+        }
+    }
+
+    /// <summary>Reads a file's numeric group id via `stat`, or null on any failure.</summary>
+    private static uint? GetGroupId(string path, ILogger logger)
+    {
+        // BSD stat (macOS/FreeBSD) uses -f with its own format-string syntax; GNU
+        // stat (Linux, and BusyBox's GNU-compatible mode) uses -c. "%g" (group id)
+        // happens to be the same token in both, confirmed directly against both a
+        // real macOS `stat -f %g` and the GNU coreutils manual for `-c %g`.
+        var formatFlag = OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD() ? "-f" : "-c";
+
+        try
+        {
+            var psi = new ProcessStartInfo("stat")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add(formatFlag);
+            psi.ArgumentList.Add("%g");
+            psi.ArgumentList.Add(path);
+
+            using var process = Process.Start(psi);
+            if (process is null)
+            {
+                return null;
+            }
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0 && uint.TryParse(stdout.Trim(), out var gid))
+            {
+                return gid;
+            }
+
+            logger.LogWarning("  > Could not determine group of {Path}: {Error}", path, stderr.Trim());
+            return null;
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException)
+        {
+            logger.LogWarning("  > Could not run stat for {Path}: {Error}", path, ex.Message);
+            return null;
         }
     }
 }
