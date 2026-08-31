@@ -8,6 +8,10 @@
   A Jellyfin plugin that finds and downloads missing local trailers for movies and TV series from YouTube.
 </p>
 
+<p align="center">
+  <a href="https://grexe.github.io/jellyfin-trailer-fetcher/"><strong>Documentation</strong></a>
+</p>
+
 Trailer Fetcher runs as a scheduled task inside your Jellyfin server. For every movie or series without a local
 trailer, it tries Jellyfin's own `RemoteTrailers` link first, then falls back to a multi-stage YouTube search with
 sequel-aware title matching and duration/keyword filtering, downloads the best-quality match it can get via
@@ -70,6 +74,10 @@ Settings are grouped on the plugin's page:
 - **Network** - a cookies file for authenticated/age-restricted access, pacing between requests, and the
   rate-limit retry behavior.
 - **Debugging and Testing** - dry-run mode and verbose per-candidate logging.
+
+See the [full configuration reference](https://grexe.github.io/jellyfin-trailer-fetcher/configuration.html) for
+what every setting does, and the [documentation](https://grexe.github.io/jellyfin-trailer-fetcher/) generally for
+how the plugin behaves and troubleshooting help.
 
 ## Building from source
 
