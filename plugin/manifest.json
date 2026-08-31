@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.23.0",
+        "changelog": "Reorganized the settings page for readability - purely cosmetic, no configuration keys changed. The last-run summary now shows just the one-line header (date, duration, stop reason) with the full per-movie/series breakdown behind a \"Details\" toggle instead of always being fully expanded. Every other setting is grouped under \"Scanning\" (libraries, library-scan trigger, max trailer duration), \"Quality\" (minimum resolution, upgrade toggle), \"Organisation\" (rename, folder migration), \"Network\" (cookies, request delay, rate-limit retry), and \"Debugging and Testing\" (dry run, verbose logging) - previously one long unstructured list. \"Rate-limit retry delay\" is now visibly disabled whenever \"Retry once if rate-limited\" is off, instead of being editable but inert.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.23.0.zip",
+        "checksum": "2169a7d1c110c4bd3ca6d7a4aadd8c58",
+        "timestamp": "2026-08-31T20:19:40Z"
+      },
+      {
         "version": "0.8.22.0",
         "changelog": "Added an opt-in \"Upgrade low-quality trailers\" setting. When on, a movie/series that already has a local trailer still gets re-checked against a configurable \"Minimum trailer quality\" (default 720p, via ffprobe) and re-searched if it falls short - most usefully for trailers that landed on the mweb fallback's ~360p cliff (see 0.8.21.0). The existing file is only ever replaced by a genuinely higher-resolution download: both are probed and compared after the new attempt completes, so a re-attempt that can't beat it, or that also lands on a low-quality fallback, leaves the original trailer untouched rather than trading one low-quality file for another. Off by default - re-checking every under-quality trailer on every run until it clears the bar means more yt-dlp traffic (and so more rate-limit exposure) than a one-time pass, until the library catches up.",
         "targetAbi": "10.11.0.0",
