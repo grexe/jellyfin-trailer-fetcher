@@ -12,8 +12,8 @@ local trailer file when the movie has its own dedicated folder
 series always already has one, so that step doesn't apply there.
 
 This is a from-scratch C# port of the standalone
-[`jellyfin-trailer-fetcher`](https://codeberg.org/grexe/jellyfin-trailer-fetcher/src/branch/main)
-Python script, not a wrapper around it - running server-side changes the shape of the
+[`jellyfin-trailer-fetcher`](../src) Python script (still in this same repository, at
+the root), not a wrapper around it - running server-side changes the shape of the
 problem enough that a straight rewrite made more sense than shelling out.
 
 ## Why a native rewrite, not a wrapper
@@ -167,15 +167,11 @@ This uses Jellyfin's normal install/update mechanism instead of manual file copy
 3. In Jellyfin: **Dashboard → Plugins → Repositories → Add Repository**, using this
    raw URL:
    ```
-   https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/manifest.json
+   https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/manifest.json
    ```
 4. **Dashboard → Plugins → Catalog** should now list "Trailer Fetcher" - install it
    from there. Future `package.sh` + manifest update + push cycles show up as a normal
    update in the Jellyfin dashboard.
-
-Note this points at the `plugin` branch, which can move/rebase during development - if
-Jellyfin ever reports a checksum mismatch after a force-push, remove and re-add the
-plugin. Once this stabilizes, switch the repository URL to a tagged release instead.
 
 ## Library scoping
 

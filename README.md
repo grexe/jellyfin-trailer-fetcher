@@ -51,7 +51,7 @@ dashboard instead of a `.env` file.
 
 1. In Jellyfin, go to **Dashboard → Plugins → Repositories** and add a repository with this URL:
    ```
-   https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/main/plugin/manifest.json
+   https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/manifest.json
    ```
 2. Go to **Catalog**, find **Trailer Fetcher** under General, and install it.
 3. Restart Jellyfin.

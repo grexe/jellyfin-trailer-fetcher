@@ -5,7 +5,7 @@ version: "0.8.25.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
-imageUrl: "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/main/plugin/images/logo.png"
+imageUrl: "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png"
 description: >
   Scans the library for missing local trailers - movies and TV series - searches
   YouTube via yt-dlp using sequel-aware title matching, downloads matches into
