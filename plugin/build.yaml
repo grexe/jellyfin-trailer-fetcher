@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.20.0"
+version: "0.8.21.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,21 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.21.0: Improved trailer quality. The download format selector was restricted to
+  [ext=mp4]/[ext=m4a] video/audio only - YouTube's actual highest-resolution streams
+  are frequently VP9/AV1-in-webm only, so this could silently cap quality below what
+  was genuinely available, confirmed by comparing format listings for real trailer
+  searches. Now uses yt-dlp's own true default selector (bestvideo*+bestaudio/best,
+  no container restriction) while --merge-output-format still remuxes the result
+  into .mp4 to match the fixed trailer filename - Jellyfin transcodes on the fly for
+  any client that can't direct-play the resulting codec, same as for any other video.
+  Separately, confirmed by hand that the existing mweb fallback tier (used when the
+  higher-quality adaptive formats need a PO token this plugin doesn't provide) can
+  silently settle for an old muxed format capped around 360p - a real quality cliff
+  that was previously indistinguishable in the log from a normal download. That
+  retry's log line now says so explicitly.
+
+
   0.8.20.0: Two fixes from last night's live run, confirmed against the actual log.
   (1) The "retry once if rate-limited" flag never re-armed after a successful retry:
   once used, it stayed used for the rest of the run, so a large backlog that

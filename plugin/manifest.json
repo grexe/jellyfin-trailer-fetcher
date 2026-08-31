@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.21.0",
+        "changelog": "Improved trailer quality. The download format selector was restricted to [ext=mp4]/[ext=m4a] video/audio only - YouTube's actual highest-resolution streams are frequently VP9/AV1-in-webm only, so this could silently cap quality below what was genuinely available, confirmed by comparing format listings for real trailer searches. Now uses yt-dlp's own true default selector (bestvideo*+bestaudio/best, no container restriction) while --merge-output-format still remuxes the result into .mp4 to match the fixed trailer filename - Jellyfin transcodes on the fly for any client that can't direct-play the resulting codec, same as for any other video. Separately, confirmed by hand that the existing mweb fallback tier (used when the higher-quality adaptive formats need a PO token this plugin doesn't provide) can silently settle for an old muxed format capped around 360p - a real quality cliff that was previously indistinguishable in the log from a normal download. That retry's log line now says so explicitly.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.21.0.zip",
+        "checksum": "b8c316aabb7fb103ef443011a821c7bb",
+        "timestamp": "2026-08-31T19:26:54Z"
+      },
+      {
         "version": "0.8.20.0",
         "changelog": "Two fixes from last night's live run, confirmed against the actual log. (1) The \"retry once if rate-limited\" flag never re-armed after a successful retry: once used, it stayed used for the rest of the run, so a large backlog that re-triggers YouTube's rate limit a second time later in the same run gave up immediately instead of getting its own retry. It now resets after every movie/series that completes without hitting the limit again - proof the limit actually lifted, not just a lucky moment - so each new rate-limit encounter gets its own single retry, same as the first. (2) The settings page and log summary showed \"0\" for TV series stats when the run got rate-limited/cancelled entirely during the movies phase (movies are always processed first) and series were never reached at all - indistinguishable from \"reached every series and matched none\". Both now show \"n/a\" for a phase that was never started, distinct from a genuine zero count.",
         "targetAbi": "10.11.0.0",

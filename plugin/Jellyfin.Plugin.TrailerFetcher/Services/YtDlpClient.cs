@@ -224,7 +224,14 @@ public class YtDlpClient
             }
         }
 
-        _logger.LogInformation("  > Retrying download with a more conservative client (mweb)...");
+        // Confirmed by hand: mweb's adaptive (high-quality) formats need a GVS PO
+        // token this plugin doesn't provide, so yt-dlp silently drops them and falls
+        // back to an old muxed "18"-style format capped around 360p - reliable, but a
+        // real quality cliff from what tier 1 would have gotten. Worth calling out
+        // here specifically, since a trailer that ends up unexpectedly low-resolution
+        // is otherwise indistinguishable in the log from a normal successful download.
+        _logger.LogInformation(
+            "  > Retrying download with a more conservative client (mweb) - reliable, but may fall back to a much lower resolution (~360p) than a normal download would get...");
         return await DownloadOnceAsync(url, destinationPath, playerClientOverride: "mweb", cancellationToken).ConfigureAwait(false);
     }
 
@@ -236,7 +243,16 @@ public class YtDlpClient
             var tmpPattern = Path.Combine(tmpDir.FullName, "trailer.%(ext)s");
             var args = new List<string>
             {
-                "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                // yt-dlp's own default selector (no -f at all is "bestvideo*+bestaudio/best"),
+                // not restricted to [ext=mp4]/[ext=m4a] - YouTube's actual highest-resolution
+                // streams are usually VP9/AV1-in-webm only, so an mp4/m4a-only restriction was
+                // silently capping quality below what's genuinely available (confirmed live:
+                // trailers coming through visibly lower quality than expected). --merge-output-format
+                // still remuxes the result into an .mp4 container regardless of source codec,
+                // matching the fixed ".mp4" trailer filename - Jellyfin transcodes on the fly for
+                // any client that can't direct-play the resulting codec, same as it does for
+                // every other video in the library.
+                "-f", "bestvideo*+bestaudio/best",
                 "--merge-output-format", "mp4",
                 "--no-part",
                 "-o", tmpPattern
