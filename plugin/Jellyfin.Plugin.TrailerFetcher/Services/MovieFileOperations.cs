@@ -259,6 +259,14 @@ public static class MovieFileOperations
             return (localPath, false);
         }
 
+        // Confirmed live: a brand-new folder created by whatever user/process this
+        // plugin's own process runs as can end up with permission bits that deny
+        // write access to the different user/process that originally added this
+        // movie to the library (e.g. over SMB) - matching the movie file's own
+        // already-correct permissions/group avoids that regardless of which side
+        // created which file.
+        UnixPermissions.MatchTo(targetDir, localPath, logger);
+
         var newLocalPath = localPath;
         var movedCount = 0;
         foreach (var name in filesToMove)

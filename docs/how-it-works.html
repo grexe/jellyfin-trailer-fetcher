@@ -122,6 +122,15 @@
     what each does and why the folder migration exists at all. TV series don't need either: a series always
     already has its own dedicated folder.
   </p>
+  <p>
+    On Linux, any file or folder the plugin creates (a downloaded trailer/theme song, or a new folder from
+    migration) also gets its permission bits and group matched to the movie/series' own existing file or
+    folder. This matters on a setup where media gets added by more than one user/process — e.g. copied in
+    over SMB as one user, with Jellyfin's own process running as another — since a folder created by one of
+    them can otherwise end up unwritable by the other. Only permission bits and group are matched, never the
+    file's owner (which generally requires root); this is best-effort and never blocks a trailer/theme song
+    fetch that already succeeded.
+  </p>
 
   <h2 id="theme-songs">7. Theme songs (optional)</h2>
   <p>

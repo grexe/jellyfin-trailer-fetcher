@@ -416,6 +416,7 @@ public class FetchTrailersTask : IScheduledTask
                     downloadSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
                     if (downloadSuccess)
                     {
+                        UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
                         break;
                     }
                 }
@@ -432,6 +433,7 @@ public class FetchTrailersTask : IScheduledTask
                 if (downloadSuccess)
                 {
                     stats.Upgraded++;
+                    UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
                 }
             }
             else if (downloadSuccess)
@@ -697,6 +699,14 @@ public class FetchTrailersTask : IScheduledTask
 
         _logger.LogInformation("  > Fetching theme song from ThemerrDB ({Url})...", themeUrl);
         var success = await ytDlp.DownloadAudioAsync(themeUrl, themePath, cancellationToken).ConfigureAwait(false);
+        if (success && !string.IsNullOrEmpty(item.Path))
+        {
+            // item.Path is the movie's own file for a movie, or the series' own
+            // folder for a series - either way, an already-correctly-permissioned
+            // reference for whatever this specific library item's setup actually is.
+            UnixPermissions.MatchTo(themePath, item.Path, _logger);
+        }
+
         return success ? ThemeSongOutcome.Downloaded : ThemeSongOutcome.NotFound;
     }
 
@@ -859,6 +869,7 @@ public class FetchTrailersTask : IScheduledTask
                 downloadSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
                 if (downloadSuccess)
                 {
+                    UnixPermissions.MatchTo(trailerFilename, seriesPath, _logger);
                     break;
                 }
             }
@@ -873,6 +884,7 @@ public class FetchTrailersTask : IScheduledTask
             if (await ResolveTrailerUpgradeAsync(downloadSuccess, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight, ffprobePath, cancellationToken).ConfigureAwait(false))
             {
                 stats.SeriesUpgraded++;
+                UnixPermissions.MatchTo(trailerFilename, seriesPath, _logger);
             }
         }
         else if (downloadSuccess)

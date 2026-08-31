@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.8.27.0"
+version: "0.8.28.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,23 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.8.28.0: Root-caused and fixed the actual permission problem behind 0.8.27.0,
+  rather than only handling the failure gracefully. Confirmed live: media added to
+  the library by different users/processes (e.g. copied in over SMB as one user,
+  with Jellyfin's own containerized process running as another) can end up with
+  permission bits that deny write access to whichever of them didn't create a given
+  file/folder, even when both share the same group. On Linux, any file or folder
+  this plugin creates (a downloaded trailer/theme song, or a new folder from
+  migration) now gets its permission bits and group matched to the movie/series'
+  own existing file or folder via a new UnixPermissions.MatchTo helper (File.Set
+  UnixFileMode plus `chgrp --reference=`, verified both mechanisms directly before
+  wiring them in). Deliberately never touches the file's owner, since changing that
+  generally needs root - matching group and permission bits was enough to solve the
+  reported case, since the differently-owned files already shared a group. No
+  configuration needed; best-effort and silently logged on failure, same as
+  everywhere else in this plugin that touches the filesystem.
+
+
   0.8.27.0: Fixed a permission error crashing the entire run instead of just skipping
   the affected item. Confirmed live: a theme song download hit
   System.UnauthorizedAccessException on the underlying NFS share, and it propagated
