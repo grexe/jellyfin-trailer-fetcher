@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting — Trailer Fetcher</title>
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <img src="assets/logo.png" alt="">
+    <span class="site-title">Trailer Fetcher</span>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="installation.html">Installation</a>
+      <a href="configuration.html">Configuration</a>
+      <a href="how-it-works.html">How It Works</a>
+      <a href="troubleshooting.html" class="active">Troubleshooting</a>
+      <a href="https://github.com/grexe/jellyfin-trailer-fetcher">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Troubleshooting</h1>
+  <p class="lede">
+    Start with the plugin's own log file: <code>&lt;plugin data folder&gt;/trailer-fetcher.log</code>. It has
+    everything below in more detail than Jellyfin's main server log.
+  </p>
+
+  <h2>A movie/series isn't getting a trailer</h2>
+  <ol>
+    <li>Turn on <a href="configuration.html">Verbose logging</a> and re-run — this shows the specific
+      reason every rejected search candidate failed (title mismatch, duration, missing trailer keyword),
+      instead of just "no suitable trailer found".</li>
+    <li>Check the media file's extension is recognized as a valid video file. Uncommon or very old
+      containers may not be — see the log for a line like
+      <code>Skipping "Title": "Not a video file (extension: .xyz)"</code>. If you hit this on a legitimate
+      video file, <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">open an issue</a> with
+      the extension.</li>
+    <li>Check the file isn't being treated as a sample, extra, or existing trailer — files named/placed
+      like one are deliberately skipped.</li>
+    <li>For an obscure or foreign-language title, the search itself may simply not find a matching
+      official-looking trailer on YouTube. This isn't something the plugin can force.</li>
+  </ol>
+
+  <h2 id="low-quality">Trailers are downloading, but at low resolution</h2>
+  <p>
+    Two separate causes, both explained on <a href="how-it-works.html#quality">How It Works</a>:
+  </p>
+  <ul>
+    <li>
+      <strong>The source video genuinely tops out low.</strong> Especially for older (pre-2010s) movies,
+      the official trailer as uploaded to YouTube may simply never have been available above 480p/720p.
+      No setting changes this.
+    </li>
+    <li>
+      <strong>The download landed on the conservative fallback tier.</strong> YouTube gates its
+      higher-quality adaptive video formats behind a "PO token" (proof-of-origin) requirement that this
+      plugin doesn't provide — <em>a cookies file does not help with this</em>, since a PO token is a
+      separate anti-bot attestation, not an authentication credential. When this happens, the fallback tier
+      still gets a working download, just capped around 360p. Turn on <a href="configuration.html">Upgrade
+      low-quality trailers</a> to have the plugin periodically retry these — it only replaces the file if a
+      later attempt genuinely does better, so it's safe to leave on for a few runs.
+    </li>
+  </ul>
+
+  <h2>Age-restricted videos fail with "Sign in to confirm your age"</h2>
+  <p>
+    Upload a <a href="configuration.html">cookies file</a> from a YouTube account that's passed age
+    verification. This is a different, unrelated gate from the PO-token quality issue above — cookies fix
+    this one specifically.
+  </p>
+
+  <h2>A run stopped early / "rate-limited"</h2>
+  <p>
+    See <a href="how-it-works.html#rate-limiting">How It Works: rate-limit handling</a> for exactly what
+    happens and why. If it keeps happening on a large library even with the retry, try increasing
+    <a href="configuration.html">Delay between requests</a>.
+  </p>
+
+  <h2>Trailer downloaded, but Jellyfin doesn't show it</h2>
+  <p>
+    Jellyfin only recognizes a local trailer file when the movie has its own dedicated folder — a correctly
+    named trailer sitting in a folder shared by other movies is silently ignored
+    (<a href="https://github.com/jellyfin/jellyfin/issues/10077">jellyfin/jellyfin#10077</a>). Turn on
+    <a href="configuration.html">Migrate movies into their own folder</a>, or move the movie manually. TV
+    series don't have this problem — a series always already has its own folder.
+  </p>
+  <p>
+    If the folder is already correct and it's still not showing, trigger a library scan (or turn on
+    <a href="configuration.html">Trigger a library scan after changes</a> so future runs do this
+    automatically).
+  </p>
+
+  <h2>Provisioning fails ("Could not automatically provision yt-dlp")</h2>
+  <p>
+    The plugin downloads <code>yt-dlp</code>/<code>deno</code> from their GitHub releases on first use —
+    this needs outbound internet access from wherever the Jellyfin server process actually runs. Check the
+    server (or its container) can reach <code>github.com</code>.
+  </p>
+
+  <h2>Still stuck?</h2>
+  <p>
+    <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">Open an issue on GitHub</a> with the
+    relevant section of <code>trailer-fetcher.log</code> (with <a href="configuration.html">Verbose
+    logging</a> on if it's a matching/filtering question).
+  </p>
+</main>
+
+<footer>
+  Trailer Fetcher is free/open source software.
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher">Source on GitHub</a> ·
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">Report an issue</a>
+</footer>
+</body>
+</html>

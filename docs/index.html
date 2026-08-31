@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trailer Fetcher — Jellyfin Plugin</title>
+<meta name="description" content="A Jellyfin plugin that finds and downloads missing local trailers for movies and TV series from YouTube.">
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <img src="assets/logo.png" alt="">
+    <span class="site-title">Trailer Fetcher</span>
+    <nav class="site-nav">
+      <a href="index.html" class="active">Home</a>
+      <a href="installation.html">Installation</a>
+      <a href="configuration.html">Configuration</a>
+      <a href="how-it-works.html">How It Works</a>
+      <a href="troubleshooting.html">Troubleshooting</a>
+      <a href="https://github.com/grexe/jellyfin-trailer-fetcher">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <img src="assets/logo.png" alt="Trailer Fetcher logo">
+    <h1>Trailer Fetcher</h1>
+    <p>A Jellyfin plugin that finds and downloads missing local trailers for movies and TV series from YouTube.</p>
+    <p style="margin-top: 1.5rem;"><a class="btn" href="installation.html">Install it →</a></p>
+  </div>
+
+  <p class="lede">
+    Trailer Fetcher runs as a scheduled task inside your Jellyfin server. For every movie or series without a
+    local trailer, it tries Jellyfin's own official trailer link first, then falls back to a multi-stage YouTube
+    search with sequel-aware title matching and duration/keyword filtering, downloads the best-quality match it
+    can get, and saves it next to your media so every client plays it locally — including ones that can't stream
+    remote trailers, like the webOS app.
+  </p>
+
+  <h2>Why a plugin, not just <code>yt-dlp</code> by hand</h2>
+  <p>
+    Local trailers make a real difference in Jellyfin: they play instantly, work offline, and work on clients
+    that mishandle or can't stream a remote trailer link at all. Finding and fetching the <em>right</em> one for
+    every item in a real library — the official trailer where Jellyfin already knows it, a filtered YouTube
+    search where it doesn't, at a resolution actually worth keeping — isn't a one-off script you run once. This
+    plugin does it as an ordinary, repeatable Jellyfin scheduled task: configure it once, and it keeps a growing
+    library topped up on its own schedule.
+  </p>
+
+  <h2>What it does</h2>
+  <div class="card-grid">
+    <div class="card">
+      <h3>Movies and TV series</h3>
+      <p>Not just movies — series get the same treatment, with a matching folder-based local trailer.</p>
+    </div>
+    <div class="card">
+      <h3>Official trailer first</h3>
+      <p>Uses Jellyfin's own metadata-sourced trailer link before falling back to a YouTube search.</p>
+    </div>
+    <div class="card">
+      <h3>Sequel-aware matching</h3>
+      <p>Title and keyword filtering rejects unrelated search results, including franchise/sequel mix-ups.</p>
+    </div>
+    <div class="card">
+      <h3>Quality-aware</h3>
+      <p>Downloads the true best-quality format available, with an optional pass to upgrade existing
+      low-quality trailers later.</p>
+    </div>
+    <div class="card">
+      <h3>Rate-limit aware</h3>
+      <p>Paces requests to avoid tripping YouTube's rate limiting, and recovers with a single bounded retry
+      if it happens anyway.</p>
+    </div>
+    <div class="card">
+      <h3>Self-managed dependencies</h3>
+      <p>Downloads and updates its own <code>yt-dlp</code>/<code>deno</code> — nothing to install on the
+      server yourself.</p>
+    </div>
+  </div>
+
+  <h2>Requirements</h2>
+  <ul>
+    <li>Jellyfin 10.11.x</li>
+    <li>Outbound internet access from the server (to reach YouTube, and to fetch the plugin's managed
+      <code>yt-dlp</code>/<code>deno</code> binaries on first run)</li>
+  </ul>
+
+  <div class="callout">
+    <p>
+      New here? Start with <a href="installation.html">Installation</a>, then see
+      <a href="configuration.html">Configuration</a> for what every setting does.
+    </p>
+  </div>
+</main>
+
+<footer>
+  Trailer Fetcher is free/open source software.
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher">Source on GitHub</a> ·
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">Report an issue</a>
+</footer>
+</body>
+</html>

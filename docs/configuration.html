@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuration — Trailer Fetcher</title>
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <img src="assets/logo.png" alt="">
+    <span class="site-title">Trailer Fetcher</span>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="installation.html">Installation</a>
+      <a href="configuration.html" class="active">Configuration</a>
+      <a href="how-it-works.html">How It Works</a>
+      <a href="troubleshooting.html">Troubleshooting</a>
+      <a href="https://github.com/grexe/jellyfin-trailer-fetcher">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Configuration</h1>
+  <p class="lede">
+    All settings live on <strong>Dashboard → Plugins → Trailer Fetcher</strong>, grouped the same way as
+    below. Defaults are chosen to be safe for a first run.
+  </p>
+
+  <div class="setting-group">
+    <h3>Statistics</h3>
+    <p>Not a setting — shows the outcome of the last run (date, duration, how it ended) with a
+    <strong>Details</strong> toggle for the full per-movie/series breakdown: how many were scanned, already had
+    a trailer, downloaded, upgraded, or not found.</p>
+  </div>
+
+  <div class="setting-group">
+    <h3>Scanning</h3>
+
+    <div class="setting">
+      <span class="name">Libraries</span><span class="default">default: all libraries</span>
+      <p>Which libraries to scan, listed live from your server. Leave everything unchecked to scan every
+      library; check specific ones to scope each run to just those. Applies to both movies and TV series —
+      only libraries that actually contain them are useful here.</p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Trigger a library scan after changes</span><span class="default">default: on</span>
+      <p>Runs a Jellyfin library scan immediately after a run downloads a trailer or moves a movie, so the
+      change shows up right away instead of waiting for the next scheduled scan.</p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Maximum trailer duration (seconds)</span><span class="default">default: 300</span>
+      <p>Search results longer than this are assumed to be a full movie, compilation, or unrelated video —
+      not a trailer — and rejected.</p>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <h3>Quality</h3>
+
+    <div class="setting">
+      <span class="name">Minimum trailer quality (p)</span><span class="default">default: 720</span>
+      <p>The minimum acceptable trailer resolution, e.g. <code>720</code> for "720p". Only used when
+      <em>Upgrade low-quality trailers</em> below is on.</p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Upgrade low-quality trailers</span><span class="default">default: off</span>
+      <p>
+        Also re-checks trailers that already exist: if one is below the minimum quality above, it searches
+        for a better one. The existing file is only ever replaced by a <em>genuinely higher-resolution</em>
+        download — both are probed and compared after the new attempt completes, so a re-attempt that can't
+        beat it, or that also lands on a low-quality fallback, leaves the original untouched.
+      </p>
+      <p>
+        Off by default: turning it on means re-running the full search/download flow for every under-quality
+        trailer on <em>every</em> run until it clears the bar, not just once — meaningfully more requests to
+        YouTube, and so more exposure to rate limiting, until your library catches up. Worth turning on for a
+        pass or two after a big library import, then switching back off.
+      </p>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <h3>Organisation</h3>
+
+    <div class="setting">
+      <span class="name">Rename original movie files</span><span class="default">default: off</span>
+      <p>Renames the movie file itself to match its resolved title, e.g. <code>Movie Name (Year).ext</code>.</p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Migrate movies into their own folder</span><span class="default">default: Disabled</span>
+      <p>
+        Jellyfin only recognizes a local trailer file when the movie has its own dedicated folder
+        (<a href="https://github.com/jellyfin/jellyfin/issues/10077">jellyfin/jellyfin#10077</a>) — a
+        correctly named trailer sitting in a folder shared by other movies is silently ignored. Three modes:
+      </p>
+      <table>
+        <tr><th>Disabled</th><td>Never move any movie. Local trailers won't be recognized for movies that
+          don't already have their own folder.</td></tr>
+        <tr><th>Only movies with a trailer</th><td>Move only movies that already have, or just got, a
+          trailer. The rest of a flat library is left untouched.</td></tr>
+        <tr><th>Every movie</th><td>Move every movie encountered, regardless of trailer status.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <h3>Network</h3>
+
+    <div class="setting">
+      <span class="name">Cookies file</span><span class="default">default: none</span>
+      <p>
+        A Netscape-format <code>cookies.txt</code>, used by <code>yt-dlp</code> for authenticated/
+        age-restricted YouTube access. Export one with a browser extension like
+        <a href="https://addons.mozilla.org/firefox/addon/get-cookies-txt-locally/">"Get cookies.txt LOCALLY"</a>
+        while signed in to a YouTube account that's passed age verification, then upload it here. Saved
+        immediately on upload, separately from the Save button for everything else.
+      </p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Delay between requests (seconds)</span><span class="default">default: 3</span>
+      <p>
+        Minimum wait before each individual <code>yt-dlp</code> request. A large library can add up to many
+        separate requests with no pacing between them, which can trip YouTube's own rate limiting — see
+        <a href="how-it-works.html#rate-limiting">rate-limit handling</a>. Lower this only if you're
+        confident it won't happen; <code>0</code> disables the delay entirely.
+      </p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Retry once if rate-limited</span><span class="default">default: on</span>
+      <p>
+        If YouTube rate-limits the session anyway, wait then retry the rest of the run exactly once instead
+        of stopping immediately. See <a href="how-it-works.html#rate-limiting">How It Works</a> for the full
+        behavior.
+      </p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Rate-limit retry delay (minutes)</span><span class="default">default: 65</span>
+      <p>
+        How long to wait before that single retry. Defaults to a bit past YouTube's own stated "up to an
+        hour" ceiling. Only used (and only editable) when <em>Retry once if rate-limited</em> above is on.
+      </p>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <h3>Debugging and Testing</h3>
+
+    <div class="setting">
+      <span class="name">Dry run</span><span class="default">default: off</span>
+      <p>Logs what a run would do — what it would search for, download, rename, or move — without actually
+      downloading, renaming, or moving anything. Safe to run any time to preview the effect of a
+      configuration change.</p>
+    </div>
+
+    <div class="setting">
+      <span class="name">Verbose logging</span><span class="default">default: off</span>
+      <p>
+        Logs each rejected search candidate's specific reason (title mismatch, duration too long, missing
+        trailer keyword, ...). Off by default since a movie/series needing several fallback searches can
+        generate dozens of these lines, burying what actually matters for a normal run. Turn on when
+        diagnosing why a specific movie/series isn't finding a trailer it should — see
+        <a href="troubleshooting.html">Troubleshooting</a>.
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Trailer Fetcher is free/open source software.
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher">Source on GitHub</a> ·
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">Report an issue</a>
+</footer>
+</body>
+</html>

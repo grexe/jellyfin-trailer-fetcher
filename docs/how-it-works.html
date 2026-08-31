@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How It Works — Trailer Fetcher</title>
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="site-header-inner">
+    <img src="assets/logo.png" alt="">
+    <span class="site-title">Trailer Fetcher</span>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="installation.html">Installation</a>
+      <a href="configuration.html">Configuration</a>
+      <a href="how-it-works.html" class="active">How It Works</a>
+      <a href="troubleshooting.html">Troubleshooting</a>
+      <a href="https://github.com/grexe/jellyfin-trailer-fetcher">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>How It Works</h1>
+  <p class="lede">
+    What a run actually does, in order, for every movie and series in scope.
+  </p>
+
+  <h2>1. Skip what already has a trailer</h2>
+  <p>
+    A movie or series with a local trailer file already sitting next to it — or already recognized by
+    Jellyfin's own <code>LocalTrailers</code> — is skipped, unless <a href="configuration.html">Upgrade
+    low-quality trailers</a> is on and it's below the configured minimum resolution, in which case it still
+    gets a full search/download attempt (see <a href="#quality">Quality and the upgrade check</a> below).
+  </p>
+
+  <h2>2. Try the official trailer first</h2>
+  <p>
+    If Jellyfin already knows an official trailer URL for the item (its <code>RemoteTrailers</code>
+    metadata, typically from TMDb), that's tried before any search — it's already the correct trailer, no
+    matching needed.
+  </p>
+
+  <h2>3. Fall back to a multi-stage YouTube search</h2>
+  <p>
+    If there's no official trailer link, or it fails to download, a series of increasingly broad YouTube
+    searches are tried in order (title + year, title alone, etc.) until one produces a match. Each search
+    result is filtered before being accepted:
+  </p>
+  <ul>
+    <li><strong>Title matching</strong> — sequel- and franchise-aware, checked against every resolved title
+      variant (original title, sanitized filename title, ...) to reject a same-franchise-but-wrong-entry
+      result.</li>
+    <li><strong>Duration</strong> — rejected if it exceeds <a href="configuration.html">Maximum trailer
+      duration</a>, or (for movies) if it's suspiciously close to the movie's own runtime.</li>
+    <li><strong>Trailer keyword</strong> — the title must contain a recognizable keyword
+      (<code>trailer</code>/<code>teaser</code>/<code>vorschau</code>/<code>preview</code>/...).</li>
+  </ul>
+  <p>
+    Turn on <a href="configuration.html">Verbose logging</a> to see the specific reason each rejected
+    candidate failed.
+  </p>
+
+  <h2 id="quality">4. Download at the best available quality</h2>
+  <p>
+    Downloads use <code>yt-dlp</code>'s own true best-quality format selector — not restricted to any
+    particular container or codec — so the highest resolution genuinely available for that video is what
+    gets saved, remuxed into an <code>.mp4</code> container. Jellyfin transcodes on the fly for any client
+    that can't direct-play the resulting codec, the same as for any other video in your library.
+  </p>
+  <p>
+    Downloading tries up to three tiers, in order, each more conservative than the last:
+  </p>
+  <ol>
+    <li>yt-dlp's own default client selection — the best chance at full quality.</li>
+    <li>If that fails <em>and</em> a cookies file is configured: retry using the client that actually
+      honors cookies, for age-restricted content specifically.</li>
+    <li>If that still fails: retry with a more conservative client that reliably gets <em>something</em>
+      downloadable — but its higher-quality formats are commonly blocked by YouTube's PO-token requirement
+      (see <a href="troubleshooting.html#low-quality">Troubleshooting: low-quality trailers</a>), so this
+      tier can land as low as ~360p even when the first tier would have gotten much better.</li>
+  </ol>
+  <p>
+    With <a href="configuration.html">Upgrade low-quality trailers</a> on, an existing trailer below the
+    configured minimum gets exactly this same three-tier download attempt again. The existing file is moved
+    aside first (not deleted), both files' resolutions are probed via <code>ffprobe</code> once the new
+    attempt finishes, and the old file is only replaced if the new one is genuinely higher-resolution —
+    otherwise the original is restored untouched. A fresh attempt that lands on the same tier-3 fallback as
+    before won't beat the original, so it's kept.
+  </p>
+
+  <h2 id="rate-limiting">5. Rate-limit handling</h2>
+  <p>
+    YouTube can rate-limit a session that makes too many requests in a short window — a real risk for a
+    large library, since a single movie/series can trigger several requests on its own (search + candidate
+    checks + download attempts). Two things guard against this:
+  </p>
+  <ul>
+    <li><strong>Pacing</strong> — a configurable delay (<a href="configuration.html">Delay between
+      requests</a>) before every single request, spread out rather than sent back to back.</li>
+    <li><strong>Bounded retry</strong> — if the limit gets hit anyway, the run logs it clearly, waits
+      <a href="configuration.html">Rate-limit retry delay</a> minutes, then resumes the same run from
+      exactly where it stopped (not a full restart). If <em>that</em> retry also gets rate-limited, the run
+      stops for good rather than retrying indefinitely — continuing to hammer an apparently-still-active
+      limit doesn't help and risks making it worse. The single retry re-arms after any movie/series that
+      completes normally, so a long run that gets rate-limited more than once still gets a fresh retry each
+      time, not just once for the whole run.</li>
+  </ul>
+  <p>
+    There's no reliable way to know exactly when a rate limit lifts — YouTube's own message only states an
+    upper bound ("up to an hour") — so the retry delay is a configurable guess, not a guarantee.
+  </p>
+
+  <h2>6. File organisation (movies only)</h2>
+  <p>
+    A downloaded (or already-existing) trailer is saved as <code>&lt;title&gt;-trailer.mp4</code> next to
+    the movie. Two optional, movie-only steps can run afterward — see <a href="configuration.html">Rename
+    original movie files</a> and <a href="configuration.html">Migrate movies into their own folder</a> for
+    what each does and why the folder migration exists at all. TV series don't need either: a series always
+    already has its own dedicated folder.
+  </p>
+
+  <h2>7. Summary and library scan</h2>
+  <p>
+    At the end of a run, a summary is logged and saved for the settings page's <a
+    href="configuration.html">Statistics</a> section — counts of scanned/downloaded/upgraded/skipped for
+    movies and series separately, and why the run stopped early if it did. If anything was downloaded or
+    moved and <a href="configuration.html">Trigger a library scan</a> is on, a single Jellyfin library scan
+    is triggered so the changes show up immediately.
+  </p>
+
+  <h2>Dependencies</h2>
+  <p>
+    Trailer Fetcher shells out to <code>yt-dlp</code> for the actual YouTube extraction/download, and to a
+    <code>deno</code> JavaScript runtime that <code>yt-dlp</code> needs to solve YouTube's signature/cipher
+    challenges. <strong>Neither needs to be installed on the server</strong> — the plugin downloads both
+    directly from their own GitHub releases into its own data folder the first time they're needed, verifies
+    each download's checksum, and keeps <code>yt-dlp</code> self-updated (it needs frequent updates to keep
+    working against YouTube's changes). This needs outbound internet access from wherever the Jellyfin
+    server process runs, which it already needs to reach YouTube itself.
+  </p>
+
+  <h2>Logging</h2>
+  <p>
+    Trailer Fetcher's own log entries are mirrored into a dedicated file,
+    <code>&lt;plugin data folder&gt;/trailer-fetcher.log</code>, in addition to Jellyfin's main server log —
+    so a run can be inspected without wading through unrelated server noise.
+  </p>
+</main>
+
+<footer>
+  Trailer Fetcher is free/open source software.
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher">Source on GitHub</a> ·
+  <a href="https://github.com/grexe/jellyfin-trailer-fetcher/issues">Report an issue</a>
+</footer>
+</body>
+</html>
