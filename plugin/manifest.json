@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.9.0.0",
+        "changelog": "Theme song fetching (0.8.26.0-0.8.29.0) is now solid - marking it with a proper minor version bump rather than another patch-level one, since a whole new feature landing under a patch bump undersold it. Final fix in this run: a folder migrated in an *earlier* run never got its permissions healed by 0.8.28.0/0.8.29.0 - MigrateToOwnFolder's own \"already in its own folder\" check returns early before ever reaching the permission-matching call, so only a folder actually created in the *same* run as a theme song fetch benefited. Confirmed live: a movie's folder from a previous migration stayed at the wrong (non-group-writable) permissions indefinitely, even on runs that successfully wrote a theme song into it (because the process happened to already own the folder by then, masking the gap). Now re-applies permission/group healing to a movie's own folder on every run that fetches a theme song, not just the run that first created it.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.9.0.0.zip",
+        "checksum": "e3601b18835f94ca1feacfb0f218fde1",
+        "timestamp": "2026-08-31T23:01:01Z"
+      },
+      {
         "version": "0.8.29.0",
         "changelog": "Made 0.8.28.0's permission/group matching genuinely POSIX-portable instead of Linux-only, per feedback that the underlying mechanisms don't actually need Linux specifically. File.GetUnixFileMode/SetUnixFileMode is a portable .NET API that works on any Unix-like target - verified directly, it already worked correctly on macOS once unblocked. The only genuinely non-portable part was `chgrp --reference=`, a GNU-only extension BSD's chgrp (macOS) doesn't support - replaced with resolving the reference file's numeric group id via `stat` (its format flag differs between BSD/macOS `-f` and GNU/Linux `-c`, handled per-platform, both verified directly) and passing that plain number to `chgrp`, which is standard usage on every chgrp implementation. Verified the whole thing end to end on macOS, including the file-vs-directory execute-bit handling (a directory reference's execute bit correctly carries over to a new directory target but is correctly stripped when the target is a regular file).",
         "targetAbi": "10.11.0.0",

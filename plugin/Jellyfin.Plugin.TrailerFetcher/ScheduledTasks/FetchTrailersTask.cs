@@ -480,6 +480,20 @@ public class FetchTrailersTask : IScheduledTask
             Path.GetFileName(themeSongFolder),
             Path.GetFileNameWithoutExtension(localPath),
             StringComparison.Ordinal);
+
+        // Confirmed live: a folder migrated in an *earlier* run never gets its
+        // permissions healed by the block above, since MigrateToOwnFolder's own
+        // "already in its own folder" check returns early before ever reaching its
+        // UnixPermissions.MatchTo call - only a folder created in *this exact* run
+        // benefited. Re-applying it here, every run, for any movie that already has
+        // its own folder (not just a freshly migrated one) fixes that: permission
+        // drift the folder had from however/whenever it was actually created gets
+        // healed before writing a theme song into it, not just once at creation time.
+        if (config.FetchThemeSongs && movieHasOwnFolder)
+        {
+            UnixPermissions.MatchTo(themeSongFolder, localPath, _logger);
+        }
+
         if (config.FetchThemeSongs && !movieHasOwnFolder)
         {
             _logger.LogInformation(
