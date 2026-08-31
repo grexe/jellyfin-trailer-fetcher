@@ -49,6 +49,8 @@ public class PluginConfiguration : BasePluginConfiguration
         LibraryIds = Array.Empty<string>();
         VerboseLogging = false;
         RequestDelaySeconds = 3;
+        RetryOnRateLimit = true;
+        RateLimitRetryDelayMinutes = 65;
     }
 
     /// <summary>
@@ -126,4 +128,23 @@ public class PluginConfiguration : BasePluginConfiguration
     /// smaller per-invocation delay to actually match that pattern.
     /// </summary>
     public int RequestDelaySeconds { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a run that gets YouTube-rate-limited
+    /// should wait <see cref="RateLimitRetryDelayMinutes"/> and then try the rest of
+    /// the run exactly once more, instead of stopping immediately. There's no
+    /// reliable way to know when the limit actually lifts - YouTube's own message
+    /// just states an upper bound ("...for up to an hour") - so this is a single,
+    /// bounded retry rather than a backoff loop: if the retry also gets rate-limited,
+    /// the run stops for good rather than waiting and retrying again.
+    /// </summary>
+    public bool RetryOnRateLimit { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long to wait, in minutes, before the single retry described
+    /// by <see cref="RetryOnRateLimit"/>. Defaults to a bit past YouTube's own stated
+    /// "up to an hour" ceiling, since retrying too early just spends the one retry
+    /// hitting the same still-active limit.
+    /// </summary>
+    public int RateLimitRetryDelayMinutes { get; set; }
 }

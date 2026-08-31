@@ -106,6 +106,20 @@
                         </div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="RetryOnRateLimit" name="RetryOnRateLimit" type="checkbox" is="emby-checkbox" />
+                            <span>Retry once if rate-limited</span>
+                        </label>
+                        <div class="fieldDescription">If YouTube rate-limits the session anyway, wait, then retry the rest of the run exactly once instead of stopping immediately. There's no reliable way to know when the limit actually lifts - YouTube's own message only states an upper bound - so this is a single bounded retry, not a backoff loop: if the retry also gets rate-limited, the run stops for good.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="RateLimitRetryDelayMinutes">Rate-limit retry delay (minutes)</label>
+                        <input id="RateLimitRetryDelayMinutes" name="RateLimitRetryDelayMinutes" type="number" is="emby-input" min="1" value="65" />
+                        <div class="fieldDescription">How long to wait before that single retry. Defaults to a bit past YouTube's own stated "up to an hour" ceiling - retrying too early just spends the one retry hitting the same still-active limit.</div>
+                    </div>
+
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -343,6 +357,8 @@
                         document.querySelector('#VerboseLogging').checked = config.VerboseLogging;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
+                        document.querySelector('#RetryOnRateLimit').checked = config.RetryOnRateLimit;
+                        document.querySelector('#RateLimitRetryDelayMinutes').value = config.RateLimitRetryDelayMinutes;
                         updateCookiesStatus(config.CookiesFilePath);
                         loadLibraries(config.LibraryIds || []);
                         Dashboard.hideLoadingMsg();
@@ -415,6 +431,8 @@
                         config.VerboseLogging = document.querySelector('#VerboseLogging').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
                         config.RequestDelaySeconds = parseInt(document.querySelector('#RequestDelaySeconds').value, 10);
+                        config.RetryOnRateLimit = document.querySelector('#RetryOnRateLimit').checked;
+                        config.RateLimitRetryDelayMinutes = parseInt(document.querySelector('#RateLimitRetryDelayMinutes').value, 10);
                         config.LibraryIds = Array.prototype.slice.call(document.querySelectorAll('.chkLibrary:checked')).map(function (el) {
                             return el.value;
                         });

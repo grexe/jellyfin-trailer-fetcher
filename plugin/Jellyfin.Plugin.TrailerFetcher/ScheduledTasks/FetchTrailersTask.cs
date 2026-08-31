@@ -122,31 +122,70 @@ public class FetchTrailersTask : IScheduledTask
         // a clear ERROR-level log line and a distinct stop reason in the summary).
         OperationCanceledException? cancellation = null;
         string? stopReason = null;
-        try
-        {
-            for (var i = 0; i < movies.Count; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await ProcessMovieAsync(movies[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
-                progress.Report((i + 1) * 100.0 / totalItems);
-            }
+        var movieIndex = 0;
+        var seriesIndex = 0;
+        var hasRetriedRateLimit = false;
 
-            for (var i = 0; i < series.Count; i++)
+        // There's no reliable way to know when YouTube's own rate limit actually
+        // lifts (its own message only states an upper bound), so on the first hit
+        // this waits once and resumes the SAME run from wherever it stopped (the
+        // movie/series indices are tracked outside the try so a retry doesn't
+        // restart from scratch) rather than looping/backing off indefinitely - a
+        // retry that also gets rate-limited stops the run for good.
+        while (true)
+        {
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await ProcessSeriesAsync(series[i], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
-                progress.Report((movies.Count + i + 1) * 100.0 / totalItems);
+                for (; movieIndex < movies.Count; movieIndex++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await ProcessMovieAsync(movies[movieIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                    progress.Report((movieIndex + 1) * 100.0 / totalItems);
+                }
+
+                for (; seriesIndex < series.Count; seriesIndex++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await ProcessSeriesAsync(series[seriesIndex], config, ytDlp, stats, cancellationToken).ConfigureAwait(false);
+                    progress.Report((movies.Count + seriesIndex + 1) * 100.0 / totalItems);
+                }
+
+                break;
             }
-        }
-        catch (OperationCanceledException ex)
-        {
-            cancellation = ex;
-            stopReason = "Cancelled";
-        }
-        catch (YouTubeRateLimitedException ex)
-        {
-            stopReason = "YouTube rate-limited this session";
-            _logger.LogError("{Detail}", ex.Message);
+            catch (OperationCanceledException ex)
+            {
+                cancellation = ex;
+                stopReason = "Cancelled";
+                break;
+            }
+            catch (YouTubeRateLimitedException ex)
+            {
+                if (config.RetryOnRateLimit && !hasRetriedRateLimit)
+                {
+                    hasRetriedRateLimit = true;
+                    _logger.LogWarning(
+                        "{Detail} Waiting {Minutes} minute(s), then retrying the rest of this run once.",
+                        ex.Message,
+                        config.RateLimitRetryDelayMinutes);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(config.RateLimitRetryDelayMinutes), cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException delayEx)
+                    {
+                        cancellation = delayEx;
+                        stopReason = "Cancelled";
+                        break;
+                    }
+
+                    _logger.LogInformation("Resuming after the rate-limit wait...");
+                    continue;
+                }
+
+                stopReason = "YouTube rate-limited this session";
+                _logger.LogError("{Detail}", ex.Message);
+                break;
+            }
         }
 
         LogSummary(stats, movies.Count, series.Count, config.DryRun, startedAt, stopReason);

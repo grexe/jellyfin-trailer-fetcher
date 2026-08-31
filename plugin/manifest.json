@@ -9,6 +9,14 @@
     "imageUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.8.18.0",
+        "changelog": "A run that gets YouTube-rate-limited can now wait and retry once instead of always stopping immediately. There's no reliable way to know when the limit actually lifts - YouTube's own message only states an upper bound (\"...for up to an hour\") - so this is a single bounded retry, not a backoff loop: on the first rate limit, the run waits a configurable delay (new \"Rate-limit retry delay\" setting, default 65 minutes - a bit past YouTube's own stated ceiling) and then resumes the same run from wherever it stopped (not a full restart), controlled by a new \"Retry once if rate-limited\" toggle (on by default). If the retry also gets rate-limited, the run stops for good rather than waiting and retrying again - continuing to hammer an apparently-still-active limit doesn't help and risks making it worse.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://codeberg.org/grexe/jellyfin-trailer-fetcher/raw/branch/plugin/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.8.18.0.zip",
+        "checksum": "ebdafb564f5f99572a43ae5ebbf08aba",
+        "timestamp": "2026-08-31T00:13:25Z"
+      },
+      {
         "version": "0.8.17.0",
         "changelog": "Two small polish items from live testing. (1) The rate-limit ERROR log line is now a fixed, short message (\"...rate-limited by YouTube for up to an hour. Stopping the run now.\") with a link to yt-dlp's own wiki page on the condition, instead of extracting/reformatting yt-dlp's raw stderr text. (2) The settings page's last-run-summary table had a generic \"Metric / Value\" header for movies but correctly showed \"TV series\" as a section label further down - movies now get their own \"Movies\" section label the same way, and the generic header row (which added nothing the section labels don't already say) was dropped.",
         "targetAbi": "10.11.0.0",
