@@ -325,7 +325,11 @@ public class YtDlpClient
 
             if (File.Exists(destinationPath) && new FileInfo(destinationPath).Length > 0)
             {
-                _logger.LogInformation("  > Trailer successfully saved: {Name}", Path.GetFileName(destinationPath));
+                // Not necessarily the final kept result - the caller (DownloadBestAsync)
+                // may still discard this in favor of a later, better candidate, and logs
+                // its own message once that's decided. This just confirms the download
+                // itself succeeded.
+                _logger.LogInformation("  > Downloaded: {Name}", Path.GetFileName(destinationPath));
                 return true;
             }
 

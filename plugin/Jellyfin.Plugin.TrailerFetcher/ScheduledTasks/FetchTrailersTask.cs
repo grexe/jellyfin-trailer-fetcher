@@ -623,6 +623,14 @@ public class FetchTrailersTask : IScheduledTask
             var isBetter = bestHeight is null || (attemptHeight is not null && attemptHeight.Value > bestHeight.Value);
             if (!isBetter)
             {
+                // bestHeight is never null here (isBetter's first clause already
+                // covers a null bestHeight), so this is always a genuine comparison,
+                // not a "resolution unknown" case.
+                _logger.LogInformation(
+                    "  > This candidate is {Height}p, not better than the best found so far ({Best}p) - discarding, still searching...",
+                    attemptHeight,
+                    bestHeight);
+
                 try
                 {
                     File.Delete(trailerFilename);
@@ -659,21 +667,21 @@ public class FetchTrailersTask : IScheduledTask
             bestHeight = attemptHeight;
             UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
 
-            if (bestHeight is not null)
+            if (bestHeight is not null && bestHeight.Value >= config.MinTrailerResolution)
             {
-                // A fresh (non-upgrade) download has no "old" resolution to compare
-                // against - ResolveTrailerUpgrade's own "Upgraded ... Xp -> Yp" line
-                // covers that case separately, so this is the only resolution mention
-                // a first-time download gets.
-                _logger.LogInformation("  > Saved at {Height}p.", bestHeight);
-            }
-
-            if (bestHeight is null || bestHeight.Value >= config.MinTrailerResolution)
-            {
-                // Target met, or resolution can't be probed at all (no ffprobe) - either
-                // way there's nothing more to gain by trying further sources.
+                _logger.LogInformation("  > Found a candidate at {Height}p, which meets the {Min}p target - keeping it.", bestHeight, config.MinTrailerResolution);
                 break;
             }
+
+            if (bestHeight is not null)
+            {
+                _logger.LogInformation("  > Found a candidate at {Height}p, still below the {Min}p target - keeping it for now, but still searching...", bestHeight, config.MinTrailerResolution);
+                continue;
+            }
+
+            // Resolution can't be probed at all (no ffprobe) - nothing more to gain by
+            // trying further sources, since there'd be no way to compare them anyway.
+            break;
         }
 
         return (success, bestHeight);
