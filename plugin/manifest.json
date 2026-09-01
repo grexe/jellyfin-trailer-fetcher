@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.11.0.1",
+        "changelog": "Two bug fixes found from a live overnight run's log. (1) A movie migrated into its own folder (\"Migrate movies into their own folder\") kept the theme-song permission-healing call pointed at the movie's pre-migration path, which no longer existed - logged as harmless-looking \"Could not match permission bits\"/\"Could not determine group\" warnings, but meant the new folder never actually got its permissions/group healed after a migration in the same run. ProcessMovieAsync now updates its own local path once MigrateToOwnFolder confirms the move. (2) The dedicated trailer-fetcher.log file's write path only caught IOException, not UnauthorizedAccessException - the same gap fixed everywhere else in this codebase (0.8.27.0) - so a permission-restricted plugin data folder could silently prevent the file from ever being created. Also added a resolution mention (\"Saved at Xp.\") to a fresh (non-upgrade) trailer download's log line, matching the upgrade path's existing \"Upgraded trailer resolution: Xp -> Yp\" line.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.11.0.1.zip",
+        "checksum": "3a72bee126410e8360eb1cc4137a1b07",
+        "timestamp": "2026-09-01T21:24:20Z"
+      },
+      {
         "version": "0.11.0.0",
         "changelog": "Fixed a real gap: \"Video: minimum resolution\" and \"Audio\" were silently upgrade-only - a fresh item's very first search never checked its result against the minimum resolution (MinTrailerResolution was only ever read inside the upgrade-comparison path) and never honored the Audio preference (skipNativeLanguage was gated on an active upgrade attempt). Both now apply to every search: a fresh item that lands under the resolution target keeps trying the remaining search sources for a better one (new DownloadBestAsync, replacing the old \"stop at first successful download\" loop), keeping whichever comes out highest - the same \"only keep a genuine improvement\" comparison the upgrade path already used, just generalized so a fresh item doesn't need a later \"Update existing trailers\" run to reach quality it could have gotten immediately. \"Update existing trailers\" now only controls whether an item you already have a trailer for is eligible to be re-examined at all - resolution and audio preference are no longer conditional on it, so the config page's Audio/Video group no longer grays them out based on that checkbox. Also added a Mermaid decision-tree diagram to the \"How It Works\" docs page covering the full per-item flow, and re-padded the dashboard logo after the plugin-detail page's wide banner crop was cutting off the bottom text.",
         "targetAbi": "10.11.0.0",

@@ -94,7 +94,7 @@ public sealed class PluginFileLoggerProvider : ILoggerProvider
                     File.AppendAllText(path, line + Environment.NewLine);
                 }
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Best-effort - a logging failure must never break the actual task.
             }

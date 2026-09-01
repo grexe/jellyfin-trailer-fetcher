@@ -412,6 +412,7 @@ public class FetchTrailersTask : IScheduledTask
             if (moved)
             {
                 stats.Migrated++;
+                localPath = newLocalPath;
                 themeSongFolder = Path.GetDirectoryName(newLocalPath) ?? folderPath;
             }
         }
@@ -657,6 +658,15 @@ public class FetchTrailersTask : IScheduledTask
             success = true;
             bestHeight = attemptHeight;
             UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
+
+            if (bestHeight is not null)
+            {
+                // A fresh (non-upgrade) download has no "old" resolution to compare
+                // against - ResolveTrailerUpgrade's own "Upgraded ... Xp -> Yp" line
+                // covers that case separately, so this is the only resolution mention
+                // a first-time download gets.
+                _logger.LogInformation("  > Saved at {Height}p.", bestHeight);
+            }
 
             if (bestHeight is null || bestHeight.Value >= config.MinTrailerResolution)
             {
