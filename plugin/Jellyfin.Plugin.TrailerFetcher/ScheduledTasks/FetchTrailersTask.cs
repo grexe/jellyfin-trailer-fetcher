@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.TrailerFetcher.Configuration;
 using Jellyfin.Plugin.TrailerFetcher.Services;
 using MediaBrowser.Controller.Entities;
@@ -223,7 +224,7 @@ public class FetchTrailersTask : IScheduledTask
         {
             var downloaded = stats.Downloaded + stats.SeriesDownloaded;
             var themeSongsDownloaded = stats.ThemeSongDownloaded + stats.SeriesThemeSongDownloaded;
-            var renamed = stats.Renamed + stats.SeriesRenamed;
+            var renamed = stats.Renamed + stats.SeriesRenamed + stats.SeriesSeasonsRenamed;
             if (downloaded > 0 || stats.Migrated > 0 || themeSongsDownloaded > 0 || renamed > 0)
             {
                 _logger.LogInformation(
@@ -960,11 +961,38 @@ public class FetchTrailersTask : IScheduledTask
 
         if (config.RenameSeriesFolders)
         {
+            // Captured before any renaming below - Jellyfin's own cached Season.Path
+            // would go stale the moment the series' top-level folder is renamed
+            // (Directory.Move happens purely on disk, Jellyfin doesn't know until its
+            // next library scan), but a season subfolder's own name never changes from
+            // a top-level rename, so it's still valid to reuse once combined with
+            // whatever the series' new path ends up being.
+            var seasonFolderNames = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Season },
+                Recursive = false,
+                IsVirtualItem = false,
+                Parent = series
+            })
+                .OfType<Season>()
+                .Where(s => !string.IsNullOrEmpty(s.Path))
+                .Select(s => (FolderName: Path.GetFileName(s.Path), s.IndexNumber))
+                .ToList();
+
             var (newSeriesPath, renamed) = SeriesFileOperations.RenameSeriesFolder(seriesPath, safeTitle, config.DryRun, libraryRoot, _logger);
             if (renamed)
             {
                 stats.SeriesRenamed++;
                 seriesPath = newSeriesPath;
+            }
+
+            foreach (var (folderName, indexNumber) in seasonFolderNames)
+            {
+                var seasonPath = Path.Combine(seriesPath, folderName);
+                if (SeriesFileOperations.RenameSeasonFolder(seasonPath, indexNumber, config.DryRun, libraryRoot, _logger))
+                {
+                    stats.SeriesSeasonsRenamed++;
+                }
             }
         }
 
@@ -1064,7 +1092,8 @@ public class FetchTrailersTask : IScheduledTask
                 stats.SeriesThemeSongAlreadyHad,
                 stats.SeriesThemeSongDownloaded,
                 stats.SeriesThemeSongNotFound,
-                stats.SeriesRenamed));
+                stats.SeriesRenamed,
+                stats.SeriesSeasonsRenamed));
 
         // "0" and "never got to it" look identical as a bare count otherwise - e.g. a
         // run that got rate-limited partway through movies, with series never
@@ -1143,6 +1172,11 @@ public class FetchTrailersTask : IScheduledTask
                 _logger.LogInformation("  Series Folders Renamed  : {Count}", stats.SeriesRenamed);
             }
 
+            if (stats.SeriesSeasonsRenamed > 0)
+            {
+                _logger.LogInformation("  Season Folders Renamed  : {Count}", stats.SeriesSeasonsRenamed);
+            }
+
             if (stats.SeriesUpgraded > 0)
             {
                 _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.SeriesUpgraded);
@@ -1212,6 +1246,8 @@ public class FetchTrailersTask : IScheduledTask
         public int SeriesSkipped { get; set; }
 
         public int SeriesRenamed { get; set; }
+
+        public int SeriesSeasonsRenamed { get; set; }
 
         public int SeriesUpgraded { get; set; }
 

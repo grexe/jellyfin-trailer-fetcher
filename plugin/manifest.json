@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.13.0.0",
+        "changelog": "Extends 0.12.0.0's \"Rename series folders\" to also rename season subfolders to Jellyfin's own canonical \"Season NN\" naming (\"Specials\" for season 0) - based on each season's own resolved number from Jellyfin's Season entity (its IndexNumber), the same reliable matching that already finds the right trailer, not parsed from the subfolder's own (possibly messy) name. Only the subfolder itself is renamed; episode files inside are never touched or moved. Deliberately not going further into per-episode renaming - that's a meaningfully higher-risk operation (matching every file to the correct episode across specials, multi-episode files, and non-standard/absolute numbering) that needs its own dedicated design pass.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.13.0.0.zip",
+        "checksum": "6aec4d5ff2e445244e44477c93334b9f",
+        "timestamp": "2026-09-01T22:35:14Z"
+      },
+      {
         "version": "0.12.0.0",
         "changelog": "New feature: \"Rename series folders\" (off by default). A release-style series folder name (tags, resolution, season ranges - e.g. \"[Group] Series Name S1 - S5 [Full Series][BD][Dual Audio]...\") can still resolve to the right trailer via search - Jellyfin's own provider matching is forgiving enough for that - but the folder name itself is what drives Jellyfin's own poster match in the collection/list view and displayed title, which search never touches. This renames just the series' own top-level folder to its resolved title (e.g. \"Series Name (Year)\") - season subfolders and everything inside them are left exactly as they are, moved along with the rename unchanged. Unlike movie renaming, this runs unconditionally (not gated on a trailer search happening this run), since the display problem it fixes exists regardless of trailer status. Also fixed: the library-scan trigger's condition never included renamed movies/series (only new downloads/theme songs/migrations), so a run that only renamed something wouldn't tell Jellyfin to pick up the change.",
         "targetAbi": "10.11.0.0",

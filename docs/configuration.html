@@ -124,11 +124,14 @@
       <span class="name">Rename series folders</span><span class="default">default: off</span>
       <p>
         Renames a TV series' own top-level folder to match its resolved title, e.g. <code>Series Name
-        (Year)</code>. A release-style folder name (tags, resolution, season ranges, ...) can still resolve
-        to the right trailer via search — Jellyfin's own provider matching is forgiving enough for that —
-        but the folder name itself is what drives Jellyfin's own poster match in the collection/list view and
-        displayed title, which the search step never touches. Only the top-level folder is renamed — season
-        subfolders and everything inside them move along with it unchanged, nothing inside is restructured.
+        (Year)</code>, and its season subfolders to Jellyfin's own canonical <code>Season NN</code> naming
+        (<code>Specials</code> for season 0) — based on Jellyfin's own resolved season number for each
+        (its <code>Season</code> entity's own index, the same reliable matching that already finds the right
+        trailer), not parsed from the subfolder's own name. A release-style folder name (tags, resolution,
+        season ranges, ...) can still resolve to the right trailer via search — Jellyfin's own provider
+        matching is forgiving enough for that — but the folder names themselves are what drive Jellyfin's own
+        poster match in the collection/list view and displayed title, which the search step never touches.
+        Episode files themselves are never renamed or moved.
       </p>
     </div>
 

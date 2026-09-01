@@ -43,7 +43,7 @@
   <pre class="mermaid">
 flowchart TD
     Start(["For each movie / series in scope"]) --> SeriesRename{"Series AND<br/>'Rename series folders' on?"}
-    SeriesRename -- Yes --> RenameSeries["Rename the series' top-level folder to its<br/>resolved title - unconditional, regardless of<br/>trailer status; season subfolders untouched"] --> HasTrailer
+    SeriesRename -- Yes --> RenameSeries["Rename the series' top-level folder to its<br/>resolved title, and season subfolders to 'Season<br/>NN'/'Specials' by Jellyfin's own season number -<br/>unconditional, regardless of trailer status;<br/>episode files untouched"] --> HasTrailer
     SeriesRename -- No --> HasTrailer
 
     HasTrailer{"Already has a local trailer?"}
@@ -205,9 +205,11 @@ flowchart TD
     movies into their own folder</a> for what each does and why the folder migration exists at all (a
     series always already has its own dedicated folder, so migration doesn't apply to it). A series can
     instead get <a href="configuration.html">Rename series folders</a>, which renames its own top-level
-    folder — unlike a movie's file rename, this runs before the search step, and unconditionally (not just
-    when a trailer search happens this run), since the problem it fixes — Jellyfin's own poster match and
-    displayed title in the collection/list view — exists independently of trailer status.
+    folder and its season subfolders (to Jellyfin's own canonical <code>Season NN</code>/<code>Specials</code>
+    naming, by each season's own resolved number — never its episode files) — unlike a movie's file rename,
+    this runs before the search step, and unconditionally (not just when a trailer search happens this
+    run), since the problem it fixes — Jellyfin's own poster match and displayed title in the collection/
+    list view — exists independently of trailer status.
   </p>
   <p>
     On any Unix-like server (Linux, macOS, or similar - not Windows), any file or folder the plugin creates (a downloaded trailer/theme song, or a new folder from

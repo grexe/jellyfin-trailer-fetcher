@@ -66,15 +66,17 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether a TV series' own top-level folder
-    /// should be renamed to match its resolved title (e.g. "Series Name (Year)"). A
-    /// release-style folder name (tags, resolution, season ranges, ...) can still
-    /// resolve to the right trailer - Jellyfin's own provider matching is forgiving
-    /// enough for search - but Jellyfin's UI (poster in the collection/list view,
-    /// displayed title) is driven by the folder name itself, which the search/matching
-    /// step never touches. Only the top-level series folder is renamed; season
-    /// subfolders and everything inside them are left exactly as they are, moved along
-    /// with the rename unchanged - deliberately not attempting broader normalization or
-    /// pruning of a season's own naming.
+    /// should be renamed to match its resolved title (e.g. "Series Name (Year)"), and
+    /// its season subfolders renamed to Jellyfin's own canonical "Season NN"/"Specials"
+    /// naming (see <see cref="Services.SeriesFileOperations.SeasonFolderName"/>) - based
+    /// on Jellyfin's own resolved season number for each (its Season entity's own
+    /// IndexNumber), not parsed from the subfolder's own name. A release-style folder
+    /// name (tags, resolution, season ranges, ...) can still resolve to the right
+    /// trailer - Jellyfin's own provider matching is forgiving enough for search - but
+    /// Jellyfin's UI (poster in the collection/list view, displayed title) is driven by
+    /// the folder names themselves, which the search/matching step never touches.
+    /// Episode files are never renamed or moved - deliberately not attempting that
+    /// broader, higher-risk normalization.
     /// </summary>
     public bool RenameSeriesFolders { get; set; }
 

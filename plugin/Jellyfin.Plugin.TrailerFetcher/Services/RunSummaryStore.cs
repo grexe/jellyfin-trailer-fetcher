@@ -47,7 +47,8 @@ public record RunSummary(
     [property: JsonPropertyName("seriesThemeSongAlreadyHad")] int SeriesThemeSongAlreadyHad = 0,
     [property: JsonPropertyName("seriesThemeSongDownloaded")] int SeriesThemeSongDownloaded = 0,
     [property: JsonPropertyName("seriesThemeSongNotFound")] int SeriesThemeSongNotFound = 0,
-    [property: JsonPropertyName("seriesRenamed")] int SeriesRenamed = 0);
+    [property: JsonPropertyName("seriesRenamed")] int SeriesRenamed = 0,
+    [property: JsonPropertyName("seriesSeasonsRenamed")] int SeriesSeasonsRenamed = 0);
 
 /// <summary>
 /// Persists the most recent run's summary (the same numbers logged as the "TRAILER SYNC

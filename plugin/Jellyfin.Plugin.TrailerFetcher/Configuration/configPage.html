@@ -134,12 +134,14 @@
                                 </label>
                                 <div class="fieldDescription">
                                     Rename a TV series' own top-level folder to match its resolved title, e.g.
-                                    "Series Name (Year)". A release-style folder name (tags, resolution, season
-                                    ranges, ...) can still resolve to the right trailer via search - Jellyfin's own
-                                    matching is forgiving enough for that - but the folder name itself is what drives
-                                    Jellyfin's own poster match in the collection/list view and displayed title,
-                                    which the search step never touches. Only the top-level folder is renamed -
-                                    season subfolders and everything inside them move along with it unchanged.
+                                    "Series Name (Year)", and its season subfolders to Jellyfin's own canonical
+                                    "Season NN" ("Specials" for season 0) - based on Jellyfin's own resolved season
+                                    number for each, not parsed from the subfolder's own name. A release-style
+                                    folder name (tags, resolution, season ranges, ...) can still resolve to the
+                                    right trailer via search - Jellyfin's own matching is forgiving enough for that
+                                    - but the folder names themselves are what drive Jellyfin's own poster match in
+                                    the collection/list view and displayed title, which the search step never
+                                    touches. Episode files themselves are never renamed or moved.
                                 </div>
                             </div>
 
@@ -576,6 +578,10 @@
 
                         if (summary.seriesRenamed > 0) {
                             rows.push({ label: 'Series folders renamed', value: summary.seriesRenamed });
+                        }
+
+                        if (summary.seriesSeasonsRenamed > 0) {
+                            rows.push({ label: 'Season folders renamed', value: summary.seriesSeasonsRenamed });
                         }
 
                         if (summary.seriesUpgraded > 0) {
