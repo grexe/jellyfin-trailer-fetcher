@@ -6,6 +6,11 @@
 <title>How It Works — Trailer Fetcher</title>
 <link rel="icon" href="assets/logo.png">
 <link rel="stylesheet" href="assets/style.css">
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: prefersDark ? 'dark' : 'default', securityLevel: 'strict' });
+</script>
 </head>
 <body>
 <header class="site-header">
@@ -28,6 +33,64 @@
   <p class="lede">
     What a run actually does, in order, for every movie and series in scope.
   </p>
+
+  <h2>Overview</h2>
+  <p>
+    The decision tree below covers the whole per-item flow described in this page: when a trailer is
+    searched for at all, how a result is chosen, when an existing trailer gets replaced, and when file
+    organization and theme songs happen. The numbered sections that follow go through each part in detail.
+  </p>
+  <pre class="mermaid">
+flowchart TD
+    Start(["For each movie / series in scope"]) --> HasTrailer{"Already has a local trailer?"}
+
+    HasTrailer -- No --> BuildSources
+    HasTrailer -- Yes --> CheckUpdate{"'Update existing trailers' on?"}
+    CheckUpdate -- No --> KeepAsIs["Leave trailer untouched"]
+    CheckUpdate -- Yes --> ProbeExisting["Probe existing trailer's resolution"]
+    ProbeExisting --> BelowMin{"Below 'Video: minimum resolution'?"}
+    BelowMin -- No --> KeepAsIs
+    BelowMin -- Yes --> Backup["Back up the existing trailer"] --> BuildSources
+
+    BuildSources["Build ordered source list:<br/>official trailer URL (if known), then<br/>native-language search stages<br/>(skipped if Audio = Best quality),<br/>then English / bare-title stages"] --> TrySource
+
+    TrySource["Try next source in order"] --> Filter{"Passes title / duration / keyword filter?"}
+    Filter -- No --> MoreSources{"Sources left?"}
+    Filter -- Yes --> Download["Download candidate"]
+    Download --> DownloadOk{"Download succeeded?"}
+    DownloadOk -- No --> MoreSources
+    DownloadOk -- Yes --> ProbeNew["Probe resolution"]
+    ProbeNew --> Better{"Better than the best found so far this run?"}
+    Better -- No --> Discard["Discard - keep previous best"] --> MoreSources
+    Better -- Yes --> KeepBest["Keep as new best this run"]
+    KeepBest --> MeetsMin{"Meets 'Video: minimum resolution'?"}
+    MeetsMin -- Yes --> RunResult
+    MeetsMin -- No --> MoreSources
+    MoreSources -- Yes --> TrySource
+    MoreSources -- No --> RunResult["Best result found this run<br/>(or nothing found)"]
+
+    RunResult --> WasUpgrade{"Replacing a backed-up existing trailer?"}
+    WasUpgrade -- No --> SaveNew["Save as the trailer<br/>(or leave as not-found)"]
+    WasUpgrade -- Yes --> Compare{"New result genuinely<br/>higher-resolution than the original?"}
+    Compare -- Yes --> ReplaceOld["Keep the new one, delete the backup"]
+    Compare -- No --> RestoreOld["Restore the original, discard the new attempt"]
+
+    SaveNew --> Organize
+    ReplaceOld --> Organize
+    RestoreOld --> Organize
+    KeepAsIs --> Organize
+
+    Organize["Movies only: rename original file if configured,<br/>migrate into its own folder per Migration mode"] --> ThemeCheck{"'Fetch theme songs' on<br/>AND item in its own folder?"}
+    ThemeCheck -- Yes --> Theme["Look up ThemerrDB by TMDb id,<br/>download via yt-dlp if found"]
+    ThemeCheck -- No --> SkipTheme["Skip theme song"]
+
+    Theme --> Stats
+    SkipTheme --> Stats
+    Stats["Update run stats"] --> ScanCheck{"Anything downloaded/moved<br/>AND 'Trigger library scan' on?"}
+    ScanCheck -- Yes --> Scan["Trigger a Jellyfin library scan"]
+    ScanCheck -- No --> Done(["Next item"])
+    Scan --> Done
+  </pre>
 
   <h2>1. Skip what already has a trailer</h2>
   <p>
@@ -53,8 +116,10 @@
     searches for "<code>&lt;title&gt; trailer</code>"/"<code>&lt;title&gt; vorschau</code>" before falling
     back to an English "official trailer" search - so a same-language trailer gets first shot rather than
     always searching in English regardless of how the library is actually configured. This is never a hard
-    restriction: English and a bare-title search are still always tried afterward too. Each search result is
-    filtered before being accepted:
+    restriction: English and a bare-title search are still always tried afterward too. Set
+    <a href="configuration.html">Audio</a> to "Best quality" to skip the native-language stage from the very
+    first search for an item, prioritizing resolution over language match throughout - not just when
+    re-checking an existing trailer. Each search result is filtered before being accepted:
   </p>
   <ul>
     <li><strong>Title matching</strong> — sequel- and franchise-aware, checked against every resolved title
@@ -90,20 +155,20 @@
       tier can land as low as ~360p even when the first tier would have gotten much better.</li>
   </ol>
   <p>
-    With <a href="configuration.html">Update existing trailers</a> on, an existing trailer below the
-    configured minimum resolution gets exactly this same three-tier download attempt again. The existing
-    file is moved aside first (not deleted), both files' resolutions are probed via <code>ffprobe</code>
-    once the new attempt finishes, and the old file is only replaced if the new one is genuinely
-    higher-resolution — otherwise the original is restored untouched. A fresh attempt that lands on the
-    same tier-3 fallback as before won't beat the original, so it's kept.
+    If the result comes in below <a href="configuration.html">Video: minimum resolution</a>, the search
+    doesn't stop there — it keeps trying the remaining sources from the <a href="#search">multi-stage
+    search</a> above, downloading and probing each via <code>ffprobe</code>, and keeps whichever comes out
+    highest-resolution once the target is met or every source has been tried. This applies to <em>every</em>
+    search, including an item's very first one, not just when re-checking an existing trailer - so a fresh
+    item doesn't need a later run to reach quality it could have gotten immediately.
   </p>
   <p>
-    An upgrade re-search still searches in the item's own preferred language first by default (see
-    <a href="#search">above</a>) — which can settle for a mediocre same-language result before ever trying
-    English, since the search loop stops at the first successful download regardless of resolution. Set
-    <a href="configuration.html">Audio: preference when updating</a> to "Best quality" to have an upgrade
-    attempt skip the native-language stage entirely and go straight to English/best-available, prioritizing
-    resolution over language match for that one re-search.
+    With <a href="configuration.html">Update existing trailers</a> on, a trailer you already have below the
+    configured minimum resolution gets this same treatment too. The existing file is moved aside first (not
+    deleted), and once the search above settles on its best result, the two are compared - the old file is
+    only replaced if the new one is genuinely higher-resolution, otherwise the original is restored
+    untouched. An attempt that can't beat the original - e.g. every source lands on the same tier-3
+    fallback - leaves it kept.
   </p>
 
   <h2 id="rate-limiting">5. Rate-limit handling</h2>

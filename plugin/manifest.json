@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.11.0.0",
+        "changelog": "Fixed a real gap: \"Video: minimum resolution\" and \"Audio\" were silently upgrade-only - a fresh item's very first search never checked its result against the minimum resolution (MinTrailerResolution was only ever read inside the upgrade-comparison path) and never honored the Audio preference (skipNativeLanguage was gated on an active upgrade attempt). Both now apply to every search: a fresh item that lands under the resolution target keeps trying the remaining search sources for a better one (new DownloadBestAsync, replacing the old \"stop at first successful download\" loop), keeping whichever comes out highest - the same \"only keep a genuine improvement\" comparison the upgrade path already used, just generalized so a fresh item doesn't need a later \"Update existing trailers\" run to reach quality it could have gotten immediately. \"Update existing trailers\" now only controls whether an item you already have a trailer for is eligible to be re-examined at all - resolution and audio preference are no longer conditional on it, so the config page's Audio/Video group no longer grays them out based on that checkbox. Also added a Mermaid decision-tree diagram to the \"How It Works\" docs page covering the full per-item flow, and re-padded the dashboard logo after the plugin-detail page's wide banner crop was cutting off the bottom text.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.11.0.0.zip",
+        "checksum": "34eb1c4447c09cf4e5243831bbdc4fed",
+        "timestamp": "2026-09-01T21:07:51Z"
+      },
+      {
         "version": "0.10.4.0",
         "changelog": "Regrouped the Quality section into \"Audio/Video\": the resolution setting (now a fixed-step dropdown - 480/720/1080/1440/2160 - instead of a free-text number) and the 0.10.3.0 Audio radio switch only ever matter when the upgrade checkbox is on, so they're now visually grouped with it and grayed out until it's checked, clarifying a point that wasn't obvious before. The checkbox itself is renamed \"Update existing trailers\" (was \"Upgrade low-quality trailers\") to read naturally as the group's master switch. No behavior change - same three settings, same underlying config properties; a resolution saved by an older version that isn't one of the fixed dropdown steps is snapped to the nearest one rather than silently reverting. Also fixed the dashboard/docs logo: the prior commit replaced logo.jpg, which nothing actually references - resized it down to the 512x512 logo.png that manifest.json's imageUrl and the docs site actually use.",
         "targetAbi": "10.11.0.0",

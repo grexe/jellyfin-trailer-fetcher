@@ -368,65 +368,19 @@ public class FetchTrailersTask : IScheduledTask
                 }
             }
 
-            var sourcesToTry = TrailerSources.Build(movie, titleVariants, year, skipNativeLanguage: upgradeBackupPath is not null && config.AllowUpgradeInOtherLanguage);
+            // Resolution/audio preference are honored on every search, not just an
+            // upgrade re-check (see DownloadBestAsync) - so a fresh item doesn't need
+            // a later "Update existing trailers" run just to reach quality it could
+            // have gotten immediately.
+            var sourcesToTry = TrailerSources.Build(movie, titleVariants, year, skipNativeLanguage: config.AllowUpgradeInOtherLanguage);
 
-            // "[DRY-RUN] " is baked into the template text itself (per branch) rather
-            // than passed as a {Prefix} value - splicing a text fragment in through a
-            // structured-logging placeholder gets it quoted on its own by the logging
-            // backend (the same class of bug fixed previously for a pluralization
-            // suffix), which reads badly for a fragment that's sometimes empty.
-            var fetchingTemplate = config.DryRun
-                ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
-                : "  > Fetching trailer via {Kind} ({Source})...";
-
-            foreach (var source in sourcesToTry)
-            {
-                var isSearch = source.StartsWith("ytsearch", StringComparison.Ordinal);
-                _logger.LogInformation(fetchingTemplate, isSearch ? "Search" : "Remote-URL", source);
-
-                if (config.DryRun)
-                {
-                    _logger.LogInformation("  > [DRY-RUN] Will save as: {Name}", Path.GetFileName(trailerFilename));
-                    downloadSuccess = true;
-                    break;
-                }
-
-                var candidates = await ytDlp.ProbeAsync(source, cancellationToken).ConfigureAwait(false);
-
-                YtDlpCandidate? accepted = null;
-                foreach (var candidate in candidates)
-                {
-                    if (TrailerCandidateFilter.Accept(candidate, titleVariants, movieDurationSec, isSearch, config.MaxTrailerDurationSeconds, out var rejectReason))
-                    {
-                        accepted = candidate;
-                        break;
-                    }
-
-                    if (config.VerboseLogging)
-                    {
-                        _logger.LogInformation("  > [filter] {Reason}", rejectReason);
-                    }
-                }
-
-                if (accepted is not null)
-                {
-                    downloadSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
-                    if (downloadSuccess)
-                    {
-                        UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
-                        break;
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("  > No suitable trailer found for source ({Source}).", source);
-                }
-            }
+            var (bestSuccess, bestHeight) = await DownloadBestAsync(
+                sourcesToTry, trailerFilename, titleVariants, movieDurationSec, localPath, config, ffprobePath, ytDlp, cancellationToken).ConfigureAwait(false);
+            downloadSuccess = bestSuccess;
 
             if (upgradeBackupPath is not null)
             {
-                downloadSuccess = await ResolveTrailerUpgradeAsync(
-                    downloadSuccess, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight, ffprobePath, cancellationToken).ConfigureAwait(false);
+                downloadSuccess = ResolveTrailerUpgrade(downloadSuccess, bestHeight, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight);
                 if (downloadSuccess)
                 {
                     stats.Upgraded++;
@@ -509,7 +463,7 @@ public class FetchTrailersTask : IScheduledTask
     /// search/download attempt because it's below <see cref="PluginConfiguration.MinTrailerResolution"/>,
     /// and if so, moves the existing file aside so the normal download flow can write
     /// a fresh one without clobbering it before the two are compared by
-    /// <see cref="ResolveTrailerUpgradeAsync"/>. Shared between movies and series -
+    /// <see cref="ResolveTrailerUpgrade"/>. Shared between movies and series -
     /// this decision has no movie/series-specific behavior of its own.
     /// </summary>
     /// <returns>
@@ -560,21 +514,198 @@ public class FetchTrailersTask : IScheduledTask
     }
 
     /// <summary>
+    /// Tries each source in order, keeping the highest-resolution successful download
+    /// found across the whole attempt - a later source that can't beat what's already
+    /// been downloaded this run is discarded and the previous (better) result is
+    /// restored, the same "only keep a genuine improvement" rule
+    /// <see cref="ResolveTrailerUpgrade"/> applies when comparing against a
+    /// pre-existing trailer. Stops as soon as a result meets
+    /// <see cref="PluginConfiguration.MinTrailerResolution"/>, or once every source has
+    /// been tried. This runs the same way regardless of whether the item already had a
+    /// trailer before this run - resolution and audio-language preference are meant to
+    /// be honored on every search, not just an upgrade re-check, so a fresh item
+    /// doesn't need a later "Update existing trailers" run just to reach quality it
+    /// could have gotten immediately. Shared between movies and series.
+    /// </summary>
+    /// <returns>Whether a trailer was saved this run, and its probed height if known.</returns>
+    private async Task<(bool Success, int? Height)> DownloadBestAsync(
+        IReadOnlyList<string> sourcesToTry,
+        string trailerFilename,
+        List<string> titleVariants,
+        double? itemDurationSeconds,
+        string localPath,
+        PluginConfiguration config,
+        string? ffprobePath,
+        YtDlpClient ytDlp,
+        CancellationToken cancellationToken)
+    {
+        // "[DRY-RUN] " is baked into the template text itself (per branch) rather than
+        // passed as a {Prefix} value - splicing a text fragment in through a
+        // structured-logging placeholder gets it quoted on its own by the logging
+        // backend (the same class of bug fixed previously for a pluralization suffix),
+        // which reads badly for a fragment that's sometimes empty.
+        var fetchingTemplate = config.DryRun
+            ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
+            : "  > Fetching trailer via {Kind} ({Source})...";
+
+        var success = false;
+        int? bestHeight = null;
+
+        foreach (var source in sourcesToTry)
+        {
+            var isSearch = source.StartsWith("ytsearch", StringComparison.Ordinal);
+            _logger.LogInformation(fetchingTemplate, isSearch ? "Search" : "Remote-URL", source);
+
+            if (config.DryRun)
+            {
+                _logger.LogInformation("  > [DRY-RUN] Will save as: {Name}", Path.GetFileName(trailerFilename));
+                return (true, null);
+            }
+
+            var candidates = await ytDlp.ProbeAsync(source, cancellationToken).ConfigureAwait(false);
+
+            YtDlpCandidate? accepted = null;
+            foreach (var candidate in candidates)
+            {
+                if (TrailerCandidateFilter.Accept(candidate, titleVariants, itemDurationSeconds, isSearch, config.MaxTrailerDurationSeconds, out var rejectReason))
+                {
+                    accepted = candidate;
+                    break;
+                }
+
+                if (config.VerboseLogging)
+                {
+                    _logger.LogInformation("  > [filter] {Reason}", rejectReason);
+                }
+            }
+
+            if (accepted is null)
+            {
+                _logger.LogWarning("  > No suitable trailer found for source ({Source}).", source);
+                continue;
+            }
+
+            // A previous source already produced a kept result this run - set it aside
+            // so this attempt can't clobber it before the two are compared. If that
+            // can't be done safely (e.g. the file is locked), stop here rather than
+            // risk the existing kept result - it's already the best found so far.
+            string? priorAttemptBackup = null;
+            if (success)
+            {
+                priorAttemptBackup = trailerFilename + ".prevattempt";
+                try
+                {
+                    File.Move(trailerFilename, priorAttemptBackup, overwrite: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("  > Could not set aside the current best trailer attempt, stopping search here: {Error}", ex.Message);
+                    break;
+                }
+            }
+
+            var attemptSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
+            if (!attemptSuccess)
+            {
+                if (priorAttemptBackup is not null && !TryRestorePriorAttempt(priorAttemptBackup, trailerFilename))
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var attemptHeight = string.IsNullOrEmpty(ffprobePath)
+                ? null
+                : await VideoProbe.GetHeightAsync(ffprobePath, trailerFilename, _logger, cancellationToken).ConfigureAwait(false);
+
+            var isBetter = bestHeight is null || (attemptHeight is not null && attemptHeight.Value > bestHeight.Value);
+            if (!isBetter)
+            {
+                try
+                {
+                    File.Delete(trailerFilename);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("  > Could not discard a non-improving trailer attempt {Path}: {Error}", trailerFilename, ex.Message);
+                }
+
+                if (priorAttemptBackup is not null && !TryRestorePriorAttempt(priorAttemptBackup, trailerFilename))
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (priorAttemptBackup is not null)
+            {
+                try
+                {
+                    File.Delete(priorAttemptBackup);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Non-fatal: the better attempt is already saved at trailerFilename,
+                    // so the item is left with a valid trailer either way - a lingering
+                    // ".prevattempt" file is just clutter.
+                    _logger.LogWarning("  > Could not remove a superseded trailer attempt {Path}: {Error}", priorAttemptBackup, ex.Message);
+                }
+            }
+
+            success = true;
+            bestHeight = attemptHeight;
+            UnixPermissions.MatchTo(trailerFilename, localPath, _logger);
+
+            if (bestHeight is null || bestHeight.Value >= config.MinTrailerResolution)
+            {
+                // Target met, or resolution can't be probed at all (no ffprobe) - either
+                // way there's nothing more to gain by trying further sources.
+                break;
+            }
+        }
+
+        return (success, bestHeight);
+    }
+
+    /// <summary>
+    /// Restores a candidate that was set aside by <see cref="DownloadBestAsync"/> back
+    /// to its normal filename, e.g. after a later attempt failed or didn't turn out
+    /// better. Non-fatal on failure (e.g. the file is now locked) - just logs and
+    /// reports it, so the caller can stop searching for more rather than continue in
+    /// an inconsistent state.
+    /// </summary>
+    /// <returns>Whether the restore succeeded.</returns>
+    private bool TryRestorePriorAttempt(string priorAttemptBackup, string trailerFilename)
+    {
+        try
+        {
+            File.Move(priorAttemptBackup, trailerFilename, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("  > Could not restore the previous trailer attempt from {Path}, stopping search here: {Error}", priorAttemptBackup, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// After a search/download attempt aimed at replacing an existing under-resolution
     /// trailer: keeps the new file only if it actually turned out higher resolution
-    /// than the one it's replacing - a re-attempt that fails outright, or that also
-    /// lands on a low-quality fallback, restores the original untouched rather than
+    /// than the one it's replacing - an attempt that failed outright, or that also
+    /// landed on a low-quality fallback, restores the original untouched rather than
     /// trading one low-quality trailer for another. Shared between movies and series.
     /// </summary>
     /// <returns>Whether the new trailer was kept (a genuine upgrade).</returns>
-    private async Task<bool> ResolveTrailerUpgradeAsync(
+    private bool ResolveTrailerUpgrade(
         bool downloadSuccess,
+        int? newHeight,
         string trailerFilename,
         string existingTrailerPath,
         string upgradeBackupPath,
-        int? existingHeight,
-        string? ffprobePath,
-        CancellationToken cancellationToken)
+        int? existingHeight)
     {
         if (!downloadSuccess)
         {
@@ -582,10 +713,6 @@ public class FetchTrailersTask : IScheduledTask
             _logger.LogInformation("  > Could not find a better trailer - kept the existing one.");
             return false;
         }
-
-        var newHeight = string.IsNullOrEmpty(ffprobePath)
-            ? null
-            : await VideoProbe.GetHeightAsync(ffprobePath, trailerFilename, _logger, cancellationToken).ConfigureAwait(false);
 
         if (newHeight is not null && (existingHeight is null || newHeight.Value > existingHeight.Value))
         {
@@ -839,60 +966,21 @@ public class FetchTrailersTask : IScheduledTask
             return;
         }
 
-        var sourcesToTry = TrailerSources.Build(series, titleVariants, year, skipNativeLanguage: upgradeBackupPath is not null && config.AllowUpgradeInOtherLanguage);
-        var fetchingTemplate = config.DryRun
-            ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
-            : "  > Fetching trailer via {Kind} ({Source})...";
+        // Resolution/audio preference are honored on every search, not just an
+        // upgrade re-check (see DownloadBestAsync) - so a fresh item doesn't need a
+        // later "Update existing trailers" run just to reach quality it could have
+        // gotten immediately.
+        var sourcesToTry = TrailerSources.Build(series, titleVariants, year, skipNativeLanguage: config.AllowUpgradeInOtherLanguage);
 
-        foreach (var source in sourcesToTry)
-        {
-            var isSearch = source.StartsWith("ytsearch", StringComparison.Ordinal);
-            _logger.LogInformation(fetchingTemplate, isSearch ? "Search" : "Remote-URL", source);
-
-            if (config.DryRun)
-            {
-                _logger.LogInformation("  > [DRY-RUN] Will save as: {Name}", Path.GetFileName(trailerFilename));
-                downloadSuccess = true;
-                break;
-            }
-
-            var candidates = await ytDlp.ProbeAsync(source, cancellationToken).ConfigureAwait(false);
-
-            YtDlpCandidate? accepted = null;
-            foreach (var candidate in candidates)
-            {
-                // No single "runtime" to compare a series trailer against, unlike a
-                // movie - only the universal duration cap applies.
-                if (TrailerCandidateFilter.Accept(candidate, titleVariants, movieDurationSeconds: null, isSearch, config.MaxTrailerDurationSeconds, out var rejectReason))
-                {
-                    accepted = candidate;
-                    break;
-                }
-
-                if (config.VerboseLogging)
-                {
-                    _logger.LogInformation("  > [filter] {Reason}", rejectReason);
-                }
-            }
-
-            if (accepted is not null)
-            {
-                downloadSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
-                if (downloadSuccess)
-                {
-                    UnixPermissions.MatchTo(trailerFilename, seriesPath, _logger);
-                    break;
-                }
-            }
-            else
-            {
-                _logger.LogWarning("  > No suitable trailer found for source ({Source}).", source);
-            }
-        }
+        // No single "runtime" to compare a series trailer against, unlike a movie -
+        // only the universal duration cap applies.
+        var (bestSuccess, bestHeight) = await DownloadBestAsync(
+            sourcesToTry, trailerFilename, titleVariants, itemDurationSeconds: null, seriesPath, config, ffprobePath, ytDlp, cancellationToken).ConfigureAwait(false);
+        downloadSuccess = bestSuccess;
 
         if (upgradeBackupPath is not null)
         {
-            if (await ResolveTrailerUpgradeAsync(downloadSuccess, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight, ffprobePath, cancellationToken).ConfigureAwait(false))
+            if (ResolveTrailerUpgrade(downloadSuccess, bestHeight, trailerFilename, existingTrailerPath!, upgradeBackupPath, existingHeight))
             {
                 stats.SeriesUpgraded++;
                 UnixPermissions.MatchTo(trailerFilename, seriesPath, _logger);

@@ -158,41 +158,50 @@ public class PluginConfiguration : BasePluginConfiguration
     /// and re-searched if it falls short - e.g. one downloaded through the mweb
     /// fallback tier (used when YouTube's higher-quality formats need a PO token
     /// this plugin doesn't provide), which can silently land as low as 360p. Backs
-    /// the "Update existing trailers" checkbox, which gates the whole Audio/Video
-    /// group on the config page - the resolution and audio-preference settings only
-    /// ever matter when this is on. Off by
-    /// default, since it means re-running the full search/download flow for every
-    /// under-resolution trailer on every run until each one clears the bar, not just
-    /// a one-time pass - more yt-dlp traffic, and so more rate-limit exposure, until
-    /// the library catches up. The existing file is only ever replaced by a
-    /// genuinely higher-resolution download (both are probed via ffprobe and
-    /// compared); a re-attempt that can't beat it, or gets rate-limited before
-    /// finding a candidate, leaves the original trailer untouched.
+    /// the "Update existing trailers" checkbox on the config page. Unlike
+    /// <see cref="MinTrailerResolution"/> and <see cref="AllowUpgradeInOtherLanguage"/>,
+    /// which are honored on every search regardless of this setting, this one only
+    /// controls whether an item that *already has* a trailer is eligible to be
+    /// re-examined at all - a fresh item with no trailer yet always gets the same
+    /// resolution/language treatment, on or off. Off by default, since turning it on
+    /// means re-running the full search/download flow for every under-resolution
+    /// trailer on every run until each one clears the bar, not just a one-time pass -
+    /// more yt-dlp traffic, and so more rate-limit exposure, until the library
+    /// catches up. The existing file is only ever replaced by a genuinely
+    /// higher-resolution download (both are probed via ffprobe and compared); a
+    /// re-attempt that can't beat it, or gets rate-limited before finding a
+    /// candidate, leaves the original trailer untouched.
     /// </summary>
     public bool UpgradeLowQualityTrailers { get; set; }
 
     /// <summary>
     /// Gets or sets the minimum acceptable trailer resolution, as a frame height in
-    /// pixels (e.g. 720 for "720p"), used by <see cref="UpgradeLowQualityTrailers"/>
-    /// to decide which existing trailers are worth trying to replace. The config
-    /// page presents this as a fixed-step dropdown (480/720/1080/1440/2160), but any
-    /// int is accepted here - a value saved by an older version that isn't one of
-    /// those steps gets snapped to the nearest one the next time the page loads.
+    /// pixels (e.g. 720 for "720p"). Honored on every search - a fresh item with no
+    /// trailer yet keeps trying further sources for a better result until this is
+    /// met, the same as <see cref="UpgradeLowQualityTrailers"/> does for an existing
+    /// one - so a fresh download doesn't need a later run to reach quality it could
+    /// have gotten immediately. The config page presents this as a fixed-step
+    /// dropdown (480/720/1080/1440/2160), but any int is accepted here - a value
+    /// saved by an older version that isn't one of those steps gets snapped to the
+    /// nearest one the next time the page loads.
     /// </summary>
     public int MinTrailerResolution { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether an <see cref="UpgradeLowQualityTrailers"/>
-    /// re-search should prioritize resolution over the item's preferred language - the
-    /// audio-track equivalent of <see cref="MinTrailerResolution"/>'s resolution check,
-    /// in a sense. Backs the "Audio" radio switch on the config page ("Preferred
-    /// language" vs "Best quality"). False (preferred language, the default) searches
-    /// in the same native-language-first order as any other search, which can settle
-    /// for a mediocre native-language result (the search loop stops at the first
-    /// successful download, regardless of resolution) without ever trying the English
-    /// stage that often has a genuinely higher-quality upload available. True (best
-    /// quality) skips the native-language stages entirely and searches in
-    /// English/best-available directly for that one re-search.
+    /// Gets or sets a value indicating whether a search should prioritize resolution
+    /// over the item's preferred language - the audio-track equivalent of
+    /// <see cref="MinTrailerResolution"/>'s resolution check, in a sense. Backs the
+    /// "Audio" radio switch on the config page ("Preferred language" vs "Best
+    /// quality"). Honored on every search, the same way <see cref="MinTrailerResolution"/>
+    /// is - not just when re-checking an existing trailer via
+    /// <see cref="UpgradeLowQualityTrailers"/>. False (preferred language, the
+    /// default) searches in the same native-language-first order as any other
+    /// search, which can settle for a mediocre native-language result (the search
+    /// loop stops at the first successful download, regardless of resolution)
+    /// without ever trying the English stage that often has a genuinely
+    /// higher-quality upload available. True (best quality) skips the
+    /// native-language stages entirely and searches in English/best-available
+    /// directly.
     /// </summary>
     public bool AllowUpgradeInOtherLanguage { get; set; }
 
