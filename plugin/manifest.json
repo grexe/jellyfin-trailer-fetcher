@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.12.0.0",
+        "changelog": "New feature: \"Rename series folders\" (off by default). A release-style series folder name (tags, resolution, season ranges - e.g. \"[Group] Series Name S1 - S5 [Full Series][BD][Dual Audio]...\") can still resolve to the right trailer via search - Jellyfin's own provider matching is forgiving enough for that - but the folder name itself is what drives Jellyfin's own poster match in the collection/list view and displayed title, which search never touches. This renames just the series' own top-level folder to its resolved title (e.g. \"Series Name (Year)\") - season subfolders and everything inside them are left exactly as they are, moved along with the rename unchanged. Unlike movie renaming, this runs unconditionally (not gated on a trailer search happening this run), since the display problem it fixes exists regardless of trailer status. Also fixed: the library-scan trigger's condition never included renamed movies/series (only new downloads/theme songs/migrations), so a run that only renamed something wouldn't tell Jellyfin to pick up the change.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.12.0.0.zip",
+        "checksum": "6bcb6fd10546a474dcb8f4d08448e7ba",
+        "timestamp": "2026-09-01T22:27:30Z"
+      },
+      {
         "version": "0.11.0.2",
         "changelog": "Fixed misleading log output from the 0.11.0.0 multi-source resolution-seeking loop: every attempted candidate logged \"Trailer successfully saved\", which read like a final result even when it was about to be silently discarded moments later in favor of a better one - and a discarded candidate never got its own log line explaining why. YtDlpClient.DownloadAsync's line is now the neutral \"Downloaded: <name>\" (it no longer owns the \"is this good enough\" framing), and DownloadBestAsync now logs one clear outcome per candidate: \"found a candidate at Xp, meets the target - keeping it\", \"found a candidate at Xp, still below target - keeping it for now, but still searching...\", or \"this candidate is Xp, not better than the best found so far (Yp) - discarding, still searching...\".",
         "targetAbi": "10.11.0.0",

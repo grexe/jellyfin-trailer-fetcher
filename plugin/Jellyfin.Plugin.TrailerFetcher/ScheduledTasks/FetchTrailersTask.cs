@@ -223,18 +223,20 @@ public class FetchTrailersTask : IScheduledTask
         {
             var downloaded = stats.Downloaded + stats.SeriesDownloaded;
             var themeSongsDownloaded = stats.ThemeSongDownloaded + stats.SeriesThemeSongDownloaded;
-            if (downloaded > 0 || stats.Migrated > 0 || themeSongsDownloaded > 0)
+            var renamed = stats.Renamed + stats.SeriesRenamed;
+            if (downloaded > 0 || stats.Migrated > 0 || themeSongsDownloaded > 0 || renamed > 0)
             {
                 _logger.LogInformation(
-                    "Triggering a Jellyfin library scan to pick up {Downloaded} new trailer(s), {ThemeSongs} new theme song(s), and {Migrated} migrated movie(s)...",
+                    "Triggering a Jellyfin library scan to pick up {Downloaded} new trailer(s), {ThemeSongs} new theme song(s), {Migrated} migrated movie(s), and {Renamed} renamed movie(s)/series folder(s)...",
                     downloaded,
                     themeSongsDownloaded,
-                    stats.Migrated);
+                    stats.Migrated,
+                    renamed);
                 _libraryManager.QueueLibraryScan();
             }
             else
             {
-                _logger.LogInformation("No new trailers, theme songs, or migrations; skipping Jellyfin library scan.");
+                _logger.LogInformation("No new trailers, theme songs, migrations, or renames; skipping Jellyfin library scan.");
             }
         }
     }
@@ -955,6 +957,17 @@ public class FetchTrailersTask : IScheduledTask
         var safeTitle = TitleMatching.SanitizeFilename($"{preferredTitle}{yearStr}");
 
         _logger.LogInformation("  > using title {Title}", preferredTitle);
+
+        if (config.RenameSeriesFolders)
+        {
+            var (newSeriesPath, renamed) = SeriesFileOperations.RenameSeriesFolder(seriesPath, safeTitle, config.DryRun, libraryRoot, _logger);
+            if (renamed)
+            {
+                stats.SeriesRenamed++;
+                seriesPath = newSeriesPath;
+            }
+        }
+
         var trailerFilename = Path.Combine(seriesPath, $"{safeTitle}-trailer.mp4");
 
         var trailerCandidates = new[]
@@ -1050,7 +1063,8 @@ public class FetchTrailersTask : IScheduledTask
                 stats.ThemeSongNotFound,
                 stats.SeriesThemeSongAlreadyHad,
                 stats.SeriesThemeSongDownloaded,
-                stats.SeriesThemeSongNotFound));
+                stats.SeriesThemeSongNotFound,
+                stats.SeriesRenamed));
 
         // "0" and "never got to it" look identical as a bare count otherwise - e.g. a
         // run that got rate-limited partway through movies, with series never
@@ -1124,6 +1138,11 @@ public class FetchTrailersTask : IScheduledTask
                 _logger.LogInformation("  Skipped (No Folder)     : {Count}", stats.SeriesSkipped);
             }
 
+            if (stats.SeriesRenamed > 0)
+            {
+                _logger.LogInformation("  Series Folders Renamed  : {Count}", stats.SeriesRenamed);
+            }
+
             if (stats.SeriesUpgraded > 0)
             {
                 _logger.LogInformation("  Trailers Upgraded       : {Count}", stats.SeriesUpgraded);
@@ -1191,6 +1210,8 @@ public class FetchTrailersTask : IScheduledTask
         public int SeriesNotFound { get; set; }
 
         public int SeriesSkipped { get; set; }
+
+        public int SeriesRenamed { get; set; }
 
         public int SeriesUpgraded { get; set; }
 

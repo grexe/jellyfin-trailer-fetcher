@@ -127,6 +127,22 @@
                                 <div class="fieldDescription">Rename the movie file to match its resolved title, e.g. "Movie Name (Year).ext".</div>
                             </div>
 
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="RenameSeriesFolders" name="RenameSeriesFolders" type="checkbox" is="emby-checkbox" />
+                                    <span>Rename series folders</span>
+                                </label>
+                                <div class="fieldDescription">
+                                    Rename a TV series' own top-level folder to match its resolved title, e.g.
+                                    "Series Name (Year)". A release-style folder name (tags, resolution, season
+                                    ranges, ...) can still resolve to the right trailer via search - Jellyfin's own
+                                    matching is forgiving enough for that - but the folder name itself is what drives
+                                    Jellyfin's own poster match in the collection/list view and displayed title,
+                                    which the search step never touches. Only the top-level folder is renamed -
+                                    season subfolders and everything inside them move along with it unchanged.
+                                </div>
+                            </div>
+
                             <div class="selectContainer">
                                 <label class="selectLabel" for="MigrateToFolders">Migrate movies into their own folder</label>
                                 <select is="emby-select" id="MigrateToFolders" name="MigrateToFolders" class="emby-select-withcolor emby-select">
@@ -558,6 +574,10 @@
                             rows.push({ label: 'Skipped (no folder)', value: summary.seriesSkipped });
                         }
 
+                        if (summary.seriesRenamed > 0) {
+                            rows.push({ label: 'Series folders renamed', value: summary.seriesRenamed });
+                        }
+
                         if (summary.seriesUpgraded > 0) {
                             rows.push({ label: 'Trailers upgraded', value: summary.seriesUpgraded });
                         }
@@ -676,6 +696,7 @@
                     loadLibraryTotals();
                     ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
                         document.querySelector('#RenameOriginal').checked = config.RenameOriginal;
+                        document.querySelector('#RenameSeriesFolders').checked = config.RenameSeriesFolders;
                         document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;
                         document.querySelector('#TriggerLibraryScan').checked = config.TriggerLibraryScan;
                         document.querySelector('#DryRun').checked = config.DryRun;
@@ -755,6 +776,7 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
                         config.RenameOriginal = document.querySelector('#RenameOriginal').checked;
+                        config.RenameSeriesFolders = document.querySelector('#RenameSeriesFolders').checked;
                         config.MigrateToFolders = document.querySelector('#MigrateToFolders').value;
                         config.TriggerLibraryScan = document.querySelector('#TriggerLibraryScan').checked;
                         config.DryRun = document.querySelector('#DryRun').checked;

@@ -41,6 +41,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public PluginConfiguration()
     {
         RenameOriginal = false;
+        RenameSeriesFolders = false;
         MigrateToFolders = MigrationMode.Disabled;
         DryRun = false;
         TriggerLibraryScan = true;
@@ -62,6 +63,20 @@ public class PluginConfiguration : BasePluginConfiguration
     /// renamed to match its resolved title (e.g. "Movie Name (Year).ext").
     /// </summary>
     public bool RenameOriginal { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a TV series' own top-level folder
+    /// should be renamed to match its resolved title (e.g. "Series Name (Year)"). A
+    /// release-style folder name (tags, resolution, season ranges, ...) can still
+    /// resolve to the right trailer - Jellyfin's own provider matching is forgiving
+    /// enough for search - but Jellyfin's UI (poster in the collection/list view,
+    /// displayed title) is driven by the folder name itself, which the search/matching
+    /// step never touches. Only the top-level series folder is renamed; season
+    /// subfolders and everything inside them are left exactly as they are, moved along
+    /// with the rename unchanged - deliberately not attempting broader normalization or
+    /// pruning of a season's own naming.
+    /// </summary>
+    public bool RenameSeriesFolders { get; set; }
 
     /// <summary>
     /// Gets or sets which movies get moved into a dedicated "&lt;title&gt;/&lt;title&gt;.ext"

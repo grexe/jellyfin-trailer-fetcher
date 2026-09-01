@@ -42,7 +42,11 @@
   </p>
   <pre class="mermaid">
 flowchart TD
-    Start(["For each movie / series in scope"]) --> HasTrailer{"Already has a local trailer?"}
+    Start(["For each movie / series in scope"]) --> SeriesRename{"Series AND<br/>'Rename series folders' on?"}
+    SeriesRename -- Yes --> RenameSeries["Rename the series' top-level folder to its<br/>resolved title - unconditional, regardless of<br/>trailer status; season subfolders untouched"] --> HasTrailer
+    SeriesRename -- No --> HasTrailer
+
+    HasTrailer{"Already has a local trailer?"}
 
     HasTrailer -- No --> BuildSources
     HasTrailer -- Yes --> CheckUpdate{"'Update existing trailers' on?"}
@@ -80,7 +84,7 @@ flowchart TD
     RestoreOld --> Organize
     KeepAsIs --> Organize
 
-    Organize["Movies only: rename original file if configured,<br/>migrate into its own folder per Migration mode"] --> ThemeCheck{"'Fetch theme songs' on<br/>AND item in its own folder?"}
+    Organize["Movies only: rename original file if configured,<br/>migrate into its own folder per Migration mode"] --> ThemeCheck{"'Fetch theme songs' on<br/>AND item in its own dedicated folder?"}
     ThemeCheck -- Yes --> Theme["Look up ThemerrDB by TMDb id,<br/>download via yt-dlp if found"]
     ThemeCheck -- No --> SkipTheme["Skip theme song"]
 
@@ -193,13 +197,17 @@ flowchart TD
     upper bound ("up to an hour") — so the retry delay is a configurable guess, not a guarantee.
   </p>
 
-  <h2>6. File organisation (movies only)</h2>
+  <h2>6. File organisation</h2>
   <p>
     A downloaded (or already-existing) trailer is saved as <code>&lt;title&gt;-trailer.mp4</code> next to
-    the movie. Two optional, movie-only steps can run afterward — see <a href="configuration.html">Rename
-    original movie files</a> and <a href="configuration.html">Migrate movies into their own folder</a> for
-    what each does and why the folder migration exists at all. TV series don't need either: a series always
-    already has its own dedicated folder.
+    the movie or series. A movie can additionally get two optional, movie-only steps afterward — see
+    <a href="configuration.html">Rename original movie files</a> and <a href="configuration.html">Migrate
+    movies into their own folder</a> for what each does and why the folder migration exists at all (a
+    series always already has its own dedicated folder, so migration doesn't apply to it). A series can
+    instead get <a href="configuration.html">Rename series folders</a>, which renames its own top-level
+    folder — unlike a movie's file rename, this runs before the search step, and unconditionally (not just
+    when a trailer search happens this run), since the problem it fixes — Jellyfin's own poster match and
+    displayed title in the collection/list view — exists independently of trailer status.
   </p>
   <p>
     On any Unix-like server (Linux, macOS, or similar - not Windows), any file or folder the plugin creates (a downloaded trailer/theme song, or a new folder from
