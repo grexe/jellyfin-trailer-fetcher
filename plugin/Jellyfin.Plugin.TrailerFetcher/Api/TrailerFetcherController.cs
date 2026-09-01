@@ -32,23 +32,20 @@ public record LibraryInfoDto(
     [property: JsonPropertyName("collectionType")] string? CollectionType);
 
 /// <summary>
-/// Library-wide counts (not just the last run's yield) of movies/series that
-/// currently have a local trailer/theme song, for the settings page's Statistics
-/// section - scoped to the same libraries the plugin is currently configured to scan.
+/// One row of the settings page's "Overall" statistics table: a single Jellyfin
+/// library (movies and series both counted in, if it's a mixed-content library),
+/// with how many of its items currently have a local trailer/theme song right now -
+/// not just what the last run happened to find or download.
 /// </summary>
-/// <param name="TotalMovies">Total movies in scope.</param>
-/// <param name="MoviesWithTrailer">Movies in scope with a local trailer, per Jellyfin's own LocalTrailers.</param>
-/// <param name="MoviesWithThemeSong">Movies in scope, in their own dedicated folder, with a local theme.mp3.</param>
-/// <param name="TotalSeries">Total TV series in scope.</param>
-/// <param name="SeriesWithTrailer">Series in scope with a local trailer, per Jellyfin's own LocalTrailers.</param>
-/// <param name="SeriesWithThemeSong">Series in scope with a local theme.mp3.</param>
-public record LibraryTotalsDto(
-    [property: JsonPropertyName("totalMovies")] int TotalMovies,
-    [property: JsonPropertyName("moviesWithTrailer")] int MoviesWithTrailer,
-    [property: JsonPropertyName("moviesWithThemeSong")] int MoviesWithThemeSong,
-    [property: JsonPropertyName("totalSeries")] int TotalSeries,
-    [property: JsonPropertyName("seriesWithTrailer")] int SeriesWithTrailer,
-    [property: JsonPropertyName("seriesWithThemeSong")] int SeriesWithThemeSong);
+/// <param name="Name">The library's display name.</param>
+/// <param name="Items">Total movies + series in this library.</param>
+/// <param name="Trailers">How many of those currently have a local trailer, per Jellyfin's own LocalTrailers.</param>
+/// <param name="ThemeSongs">How many of those, in their own dedicated folder, currently have a local theme.mp3.</param>
+public record LibraryTotalsRow(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("items")] int Items,
+    [property: JsonPropertyName("trailers")] int Trailers,
+    [property: JsonPropertyName("themeSongs")] int ThemeSongs);
 
 /// <summary>
 /// Handles uploading/removing the yt-dlp cookies file, and listing libraries, from the
@@ -96,55 +93,40 @@ public class TrailerFetcherController : ControllerBase
     }
 
     /// <summary>
-    /// Returns library-wide counts (not just the last run's yield) of movies/series
-    /// that currently have a local trailer/theme song, scoped to the plugin's
-    /// currently configured libraries. A read-only, on-demand count against Jellyfin's
-    /// own already-loaded metadata (LocalTrailers) plus a plain file-existence check
-    /// for theme.mp3 (Jellyfin has no first-class "theme song" tracking to query
+    /// Returns one row per Jellyfin library on the server - always every library,
+    /// regardless of which ones the plugin is currently configured to scan, since
+    /// this is meant to show overall server coverage rather than just current scan
+    /// scope - with how many of its movies/series currently have a local trailer/
+    /// theme song right now. A read-only, on-demand count against Jellyfin's own
+    /// already-loaded metadata (LocalTrailers) plus a plain file-existence check for
+    /// theme.mp3 (Jellyfin has no first-class "theme song" tracking to query
     /// instead) - not cached, computed fresh each time the settings page asks.
     /// </summary>
-    /// <returns>The library-wide totals.</returns>
+    /// <returns>One row per library.</returns>
     [HttpGet("LibraryTotals")]
-    public ActionResult<LibraryTotalsDto> GetLibraryTotals()
+    public ActionResult<IEnumerable<LibraryTotalsRow>> GetLibraryTotals()
     {
-        var config = Plugin.Instance!.Configuration;
-        var libraryIds = config.LibraryIds ?? Array.Empty<string>();
-        var movies = _libraryItemsFinder.GetMovies(libraryIds, logProgress: false);
-        var series = _libraryItemsFinder.GetSeries(libraryIds, logProgress: false);
-
-        var moviesWithTrailer = 0;
-        var moviesWithThemeSong = 0;
-        foreach (var movie in movies)
-        {
-            if (movie.LocalTrailers.Count > 0)
+        var rows = _libraryManager.GetVirtualFolders()
+            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(f =>
             {
-                moviesWithTrailer++;
-            }
+                var libraryIds = new[] { f.ItemId };
+                var movies = _libraryItemsFinder.GetMovies(libraryIds, logProgress: false);
+                var series = _libraryItemsFinder.GetSeries(libraryIds, logProgress: false);
 
-            if (!string.IsNullOrEmpty(movie.Path) &&
-                MovieFileOperations.HasOwnFolder(movie.Path) &&
-                System.IO.File.Exists(Path.Combine(Path.GetDirectoryName(movie.Path)!, "theme.mp3")))
-            {
-                moviesWithThemeSong++;
-            }
-        }
+                var trailers = movies.Count(m => m.LocalTrailers.Count > 0) + series.Count(s => s.LocalTrailers.Count > 0);
+                var themeSongs =
+                    movies.Count(m =>
+                        !string.IsNullOrEmpty(m.Path) &&
+                        MovieFileOperations.HasOwnFolder(m.Path) &&
+                        System.IO.File.Exists(Path.Combine(Path.GetDirectoryName(m.Path)!, "theme.mp3"))) +
+                    series.Count(s => !string.IsNullOrEmpty(s.Path) && System.IO.File.Exists(Path.Combine(s.Path, "theme.mp3")));
 
-        var seriesWithTrailer = 0;
-        var seriesWithThemeSong = 0;
-        foreach (var s in series)
-        {
-            if (s.LocalTrailers.Count > 0)
-            {
-                seriesWithTrailer++;
-            }
+                return new LibraryTotalsRow(f.Name, movies.Count + series.Count, trailers, themeSongs);
+            })
+            .ToList();
 
-            if (!string.IsNullOrEmpty(s.Path) && System.IO.File.Exists(Path.Combine(s.Path, "theme.mp3")))
-            {
-                seriesWithThemeSong++;
-            }
-        }
-
-        return Ok(new LibraryTotalsDto(movies.Count, moviesWithTrailer, moviesWithThemeSong, series.Count, seriesWithTrailer, seriesWithThemeSong));
+        return Ok(rows);
     }
 
     /// <summary>

@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.10.0.0"
+version: "0.10.1.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,19 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.10.1.0: Redesigned the Statistics section's library-totals display per feedback
+  that the previous wording needed too much explanation to be self-evident. Replaced
+  the plain-text "Library (current totals, not just the last run)" line with a
+  proper table under two tabs - "Last run" (Movies/TV series as two rows, from that
+  run's own numbers) and "Overall" (one row per actual Jellyfin library, always
+  every library regardless of current scan scope, not just the movie/series totals
+  from before) - both sharing the same Library/Items/Trailers/Theme songs columns so
+  switching tabs compares like with like. /TrailerFetcher/LibraryTotals now returns
+  one row per library instead of a flat movies/series total, resolved via
+  LibraryItemsFinder scoped to each library individually. Verified both tabs and the
+  toggle behavior in a real browser against a local stub of the actual configPage.html.
+
+
   0.10.0.0: Two new features. (1) Trailer search now prefers the item's own
   preferred metadata language (resolved per-item via its library/server
   configuration, via BaseItem.GetPreferredMetadataLanguage - no interactive
