@@ -32,6 +32,25 @@ public record LibraryInfoDto(
     [property: JsonPropertyName("collectionType")] string? CollectionType);
 
 /// <summary>
+/// Library-wide counts (not just the last run's yield) of movies/series that
+/// currently have a local trailer/theme song, for the settings page's Statistics
+/// section - scoped to the same libraries the plugin is currently configured to scan.
+/// </summary>
+/// <param name="TotalMovies">Total movies in scope.</param>
+/// <param name="MoviesWithTrailer">Movies in scope with a local trailer, per Jellyfin's own LocalTrailers.</param>
+/// <param name="MoviesWithThemeSong">Movies in scope, in their own dedicated folder, with a local theme.mp3.</param>
+/// <param name="TotalSeries">Total TV series in scope.</param>
+/// <param name="SeriesWithTrailer">Series in scope with a local trailer, per Jellyfin's own LocalTrailers.</param>
+/// <param name="SeriesWithThemeSong">Series in scope with a local theme.mp3.</param>
+public record LibraryTotalsDto(
+    [property: JsonPropertyName("totalMovies")] int TotalMovies,
+    [property: JsonPropertyName("moviesWithTrailer")] int MoviesWithTrailer,
+    [property: JsonPropertyName("moviesWithThemeSong")] int MoviesWithThemeSong,
+    [property: JsonPropertyName("totalSeries")] int TotalSeries,
+    [property: JsonPropertyName("seriesWithTrailer")] int SeriesWithTrailer,
+    [property: JsonPropertyName("seriesWithThemeSong")] int SeriesWithThemeSong);
+
+/// <summary>
 /// Handles uploading/removing the yt-dlp cookies file, and listing libraries, from the
 /// plugin's settings page. A headless server has no browser profile to read cookies
 /// from directly (unlike the standalone script's --cookie-browser), so authenticated/
@@ -48,6 +67,7 @@ public class TrailerFetcherController : ControllerBase
 
     private readonly ILogger<TrailerFetcherController> _logger;
     private readonly ILibraryManager _libraryManager;
+    private readonly LibraryItemsFinder _libraryItemsFinder;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TrailerFetcherController"/> class.
@@ -58,6 +78,7 @@ public class TrailerFetcherController : ControllerBase
     {
         _logger = logger;
         _libraryManager = libraryManager;
+        _libraryItemsFinder = new LibraryItemsFinder(libraryManager, logger);
     }
 
     /// <summary>
@@ -72,6 +93,58 @@ public class TrailerFetcherController : ControllerBase
             .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return Ok(libraries);
+    }
+
+    /// <summary>
+    /// Returns library-wide counts (not just the last run's yield) of movies/series
+    /// that currently have a local trailer/theme song, scoped to the plugin's
+    /// currently configured libraries. A read-only, on-demand count against Jellyfin's
+    /// own already-loaded metadata (LocalTrailers) plus a plain file-existence check
+    /// for theme.mp3 (Jellyfin has no first-class "theme song" tracking to query
+    /// instead) - not cached, computed fresh each time the settings page asks.
+    /// </summary>
+    /// <returns>The library-wide totals.</returns>
+    [HttpGet("LibraryTotals")]
+    public ActionResult<LibraryTotalsDto> GetLibraryTotals()
+    {
+        var config = Plugin.Instance!.Configuration;
+        var libraryIds = config.LibraryIds ?? Array.Empty<string>();
+        var movies = _libraryItemsFinder.GetMovies(libraryIds, logProgress: false);
+        var series = _libraryItemsFinder.GetSeries(libraryIds, logProgress: false);
+
+        var moviesWithTrailer = 0;
+        var moviesWithThemeSong = 0;
+        foreach (var movie in movies)
+        {
+            if (movie.LocalTrailers.Count > 0)
+            {
+                moviesWithTrailer++;
+            }
+
+            if (!string.IsNullOrEmpty(movie.Path) &&
+                MovieFileOperations.HasOwnFolder(movie.Path) &&
+                System.IO.File.Exists(Path.Combine(Path.GetDirectoryName(movie.Path)!, "theme.mp3")))
+            {
+                moviesWithThemeSong++;
+            }
+        }
+
+        var seriesWithTrailer = 0;
+        var seriesWithThemeSong = 0;
+        foreach (var s in series)
+        {
+            if (s.LocalTrailers.Count > 0)
+            {
+                seriesWithTrailer++;
+            }
+
+            if (!string.IsNullOrEmpty(s.Path) && System.IO.File.Exists(Path.Combine(s.Path, "theme.mp3")))
+            {
+                seriesWithThemeSong++;
+            }
+        }
+
+        return Ok(new LibraryTotalsDto(movies.Count, moviesWithTrailer, moviesWithThemeSong, series.Count, seriesWithTrailer, seriesWithThemeSong));
     }
 
     /// <summary>

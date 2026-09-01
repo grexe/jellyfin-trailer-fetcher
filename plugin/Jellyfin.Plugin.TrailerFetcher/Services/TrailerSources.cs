@@ -6,11 +6,12 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 
 /// <summary>
 /// Builds the ordered list of sources to try for a media item's trailer: official
-/// RemoteTrailers first, then a multi-stage set of YouTube searches (full title + year,
-/// main title + year, broad query, native-language search for non-Latin titles). Ported
-/// from the standalone script's get_trailer_sources. Works on <see cref="BaseItem"/> -
-/// RemoteTrailers is declared there - so the same query-building logic applies
-/// unchanged to a movie or a TV series.
+/// RemoteTrailers first, then a multi-stage set of YouTube searches - native-language
+/// queries for the item's own preferred metadata language (<see cref="TrailerLanguages"/>)
+/// and/or a non-Latin title, then English (full title + year, main title + year, broad
+/// query). Ported from the standalone script's get_trailer_sources. Works on
+/// <see cref="BaseItem"/> - RemoteTrailers is declared there - so the same
+/// query-building logic applies unchanged to a movie or a TV series.
 /// </summary>
 public static class TrailerSources
 {
@@ -30,14 +31,49 @@ public static class TrailerSources
             }
         }
 
+        // Biases the search toward a trailer actually uploaded/titled in the item's
+        // own preferred metadata language (resolved per-item via its library/server
+        // configuration - GetPreferredMetadataLanguage needs no interactive Jellyfin
+        // user session) before falling back to English, rather than always searching
+        // in English regardless of how the library is actually configured. Never a
+        // hard restriction: English and the bare-title fallback below are still
+        // always tried afterward too, so a missing/unhelpful native-language stage
+        // never turns "no trailer found" on its own.
+        var nativeWords = TrailerLanguages.GetNativeTrailerWords(item.GetPreferredMetadataLanguage());
+
         var queries = new List<string>();
         foreach (var cand in titleVariants)
         {
             var (cleanCand, mainCand, _) = TitleMatching.ExtractMainTitle(cand);
             var nonLatin = TitleMatching.IsNonLatin(cleanCand);
 
+            foreach (var word in nativeWords)
+            {
+                if (year is not null)
+                {
+                    queries.Add($"{cleanCand} {year} {word}");
+                    if (mainCand != cleanCand)
+                    {
+                        queries.Add($"{mainCand} {year} {word}");
+                    }
+                }
+
+                queries.Add($"{cleanCand} {word}");
+                if (mainCand != cleanCand)
+                {
+                    queries.Add($"{mainCand} {word}");
+                }
+            }
+
             if (nonLatin)
             {
+                // A fallback for a non-Latin *title* even when the preferred metadata
+                // language isn't Japanese (e.g. unset, or a different non-Latin
+                // language without its own table entry yet) - already covered by
+                // nativeWords above whenever the preferred language is "ja" itself.
+                // No "official"-style qualifier: that doesn't translate the same way,
+                // and Japanese/Chinese/Korean trailer uploads aren't conventionally
+                // titled that way to begin with.
                 if (year is not null)
                 {
                     queries.Add($"{cleanCand} {year} 予告");
@@ -51,38 +87,36 @@ public static class TrailerSources
                     queries.Add($"{mainCand} PV");
                 }
             }
-            else
+
+            if (year is not null)
             {
-                if (year is not null)
-                {
-                    queries.Add($"{cleanCand} {year} official trailer");
-                    if (mainCand != cleanCand)
-                    {
-                        queries.Add($"{mainCand} {year} official trailer");
-                    }
-                }
-
-                queries.Add($"{cleanCand} official trailer");
-                queries.Add($"{cleanCand} trailer");
+                queries.Add($"{cleanCand} {year} official trailer");
                 if (mainCand != cleanCand)
                 {
-                    queries.Add($"{mainCand} official trailer");
-                    queries.Add($"{mainCand} trailer");
+                    queries.Add($"{mainCand} {year} official trailer");
                 }
+            }
 
-                if (year is not null)
-                {
-                    queries.Add($"{cleanCand} {year}");
-                    if (mainCand != cleanCand)
-                    {
-                        queries.Add($"{mainCand} {year}");
-                    }
-                }
+            queries.Add($"{cleanCand} official trailer");
+            queries.Add($"{cleanCand} trailer");
+            if (mainCand != cleanCand)
+            {
+                queries.Add($"{mainCand} official trailer");
+                queries.Add($"{mainCand} trailer");
+            }
 
+            if (year is not null)
+            {
+                queries.Add($"{cleanCand} {year}");
                 if (mainCand != cleanCand)
                 {
-                    queries.Add(mainCand);
+                    queries.Add($"{mainCand} {year}");
                 }
+            }
+
+            if (mainCand != cleanCand)
+            {
+                queries.Add(mainCand);
             }
         }
 

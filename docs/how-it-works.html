@@ -47,8 +47,14 @@
   <h2>3. Fall back to a multi-stage YouTube search</h2>
   <p>
     If there's no official trailer link, or it fails to download, a series of increasingly broad YouTube
-    searches are tried in order (title + year, title alone, etc.) until one produces a match. Each search
-    result is filtered before being accepted:
+    searches are tried in order (title + year, title alone, etc.) until one produces a match. The item's own
+    preferred metadata language (resolved per-item via its library/server configuration - no interactive
+    Jellyfin user session needed) is tried first when it isn't English - e.g. a German-configured library
+    searches for "<code>&lt;title&gt; trailer</code>"/"<code>&lt;title&gt; vorschau</code>" before falling
+    back to an English "official trailer" search - so a same-language trailer gets first shot rather than
+    always searching in English regardless of how the library is actually configured. This is never a hard
+    restriction: English and a bare-title search are still always tried afterward too. Each search result is
+    filtered before being accepted:
   </p>
   <ul>
     <li><strong>Title matching</strong> — sequel- and franchise-aware, checked against every resolved title

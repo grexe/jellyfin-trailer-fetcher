@@ -5,7 +5,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.TrailerFetcher.Configuration;
 using Jellyfin.Plugin.TrailerFetcher.Services;
 using MediaBrowser.Controller.Entities;
@@ -41,6 +40,7 @@ public class FetchTrailersTask : IScheduledTask
     private readonly IMediaEncoder _mediaEncoder;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<FetchTrailersTask> _logger;
+    private readonly LibraryItemsFinder _libraryItemsFinder;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FetchTrailersTask"/> class.
@@ -57,6 +57,7 @@ public class FetchTrailersTask : IScheduledTask
         _mediaEncoder = mediaEncoder;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _libraryItemsFinder = new LibraryItemsFinder(libraryManager, logger);
     }
 
     /// <inheritdoc />
@@ -88,12 +89,8 @@ public class FetchTrailersTask : IScheduledTask
             config.TriggerLibraryScan);
 
         var libraryIds = config.LibraryIds ?? Array.Empty<string>();
-        var movies = libraryIds.Length > 0
-            ? GetMoviesInSelectedLibraries(libraryIds)
-            : GetAllMovies();
-        var series = libraryIds.Length > 0
-            ? GetSeriesInSelectedLibraries(libraryIds)
-            : GetAllSeries();
+        var movies = _libraryItemsFinder.GetMovies(libraryIds);
+        var series = _libraryItemsFinder.GetSeries(libraryIds);
 
         _logger.LogInformation("Found {MovieCount} movie(s) and {SeriesCount} series to process.", movies.Count, series.Count);
 
@@ -1038,125 +1035,6 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         _logger.LogInformation("==========================================");
-    }
-
-    /// <summary>
-    /// Queries movies scoped to the configured libraries. Each library is resolved to
-    /// its actual <see cref="BaseItem"/> via <see cref="ILibraryManager.GetItemById(Guid)"/>
-    /// and queried individually via <see cref="InternalItemsQuery.Parent"/>, rather than
-    /// hand-building <see cref="InternalItemsQuery.TopParentIds"/> from
-    /// <c>VirtualFolderInfo.ItemId</c> directly - that id does not reliably match what
-    /// TopParentIds-based filtering expects (confirmed: a query scoped this way
-    /// returned 0 results against a library server-side reporting had 1026+ movies
-    /// total), and TopParentIds is normally computed internally by LibraryManager from
-    /// a resolved parent item, not meant to be built by callers from a raw id string.
-    /// </summary>
-    private List<Movie> GetMoviesInSelectedLibraries(string[] libraryIds)
-    {
-        var movies = new List<Movie>();
-        var seenIds = new HashSet<Guid>();
-
-        foreach (var id in libraryIds)
-        {
-            if (!Guid.TryParse(id, out var guid))
-            {
-                _logger.LogWarning("Configured library id {Id} is not a valid GUID, skipping it.", id);
-                continue;
-            }
-
-            var libraryItem = _libraryManager.GetItemById(guid);
-            if (libraryItem is null)
-            {
-                _logger.LogWarning("Configured library id {Id} did not resolve to any item, skipping it.", guid);
-                continue;
-            }
-
-            _logger.LogInformation("Scanning library {Name}...", libraryItem.Name);
-
-            var libraryMovies = _libraryManager.GetItemList(new InternalItemsQuery
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Movie },
-                Recursive = true,
-                IsVirtualItem = false,
-                Parent = libraryItem
-            });
-
-            foreach (var movie in libraryMovies.OfType<Movie>())
-            {
-                if (seenIds.Add(movie.Id))
-                {
-                    movies.Add(movie);
-                }
-            }
-        }
-
-        return movies;
-    }
-
-    private List<Movie> GetAllMovies()
-    {
-        _logger.LogInformation("No specific libraries selected - scanning all libraries.");
-        return _libraryManager.GetItemList(new InternalItemsQuery
-        {
-            IncludeItemTypes = new[] { BaseItemKind.Movie },
-            Recursive = true,
-            IsVirtualItem = false
-        }).OfType<Movie>().ToList();
-    }
-
-    /// <summary>
-    /// Queries TV series scoped to the configured libraries. Deliberately a separate,
-    /// parallel query from <see cref="GetMoviesInSelectedLibraries"/> rather than one
-    /// combined query split by type afterward, keeping the movie and series paths fully
-    /// independent end to end.
-    /// </summary>
-    private List<Series> GetSeriesInSelectedLibraries(string[] libraryIds)
-    {
-        var series = new List<Series>();
-        var seenIds = new HashSet<Guid>();
-
-        foreach (var id in libraryIds)
-        {
-            if (!Guid.TryParse(id, out var guid))
-            {
-                // Already warned about in GetMoviesInSelectedLibraries for the same run.
-                continue;
-            }
-
-            var libraryItem = _libraryManager.GetItemById(guid);
-            if (libraryItem is null)
-            {
-                continue;
-            }
-
-            var librarySeries = _libraryManager.GetItemList(new InternalItemsQuery
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Series },
-                Recursive = true,
-                IsVirtualItem = false,
-                Parent = libraryItem
-            });
-
-            foreach (var s in librarySeries.OfType<Series>())
-            {
-                if (seenIds.Add(s.Id))
-                {
-                    series.Add(s);
-                }
-            }
-        }
-
-        return series;
-    }
-
-    private List<Series> GetAllSeries()
-    {
-        return _libraryManager.GetItemList(new InternalItemsQuery
-        {
-            IncludeItemTypes = new[] { BaseItemKind.Series },
-            Recursive = true,
-            IsVirtualItem = false
-        }).OfType<Series>().ToList();
     }
 
     /// <inheritdoc />

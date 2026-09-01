@@ -17,6 +17,8 @@
                                 <span>Details</span>
                             </button>
                             <div id="LastRunSummaryDetails" style="display:none; margin-top: 0.5em;"></div>
+
+                            <div id="LibraryTotals" class="fieldDescription" style="margin-top: 1.25em;">Loading&hellip;</div>
                         </div>
                     </div>
 
@@ -462,6 +464,53 @@
                 });
             }
 
+            function loadLibraryTotals() {
+                var el = document.querySelector('#LibraryTotals');
+                fetch(ApiClient.serverAddress() + '/TrailerFetcher/LibraryTotals', {
+                    headers: { 'Authorization': authHeader() }
+                }).then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Failed to load library totals: ' + response.status);
+                    }
+                    return response.json();
+                }).then(function (totals) {
+                    var parts = [];
+                    if (totals.totalMovies > 0) {
+                        parts.push(
+                            totals.totalMovies + ' movie' + (totals.totalMovies === 1 ? '' : 's') + ': ' +
+                            totals.moviesWithTrailer + ' with a trailer, ' +
+                            totals.moviesWithThemeSong + ' with a theme song'
+                        );
+                    }
+                    if (totals.totalSeries > 0) {
+                        parts.push(
+                            totals.totalSeries + ' series: ' +
+                            totals.seriesWithTrailer + ' with a trailer, ' +
+                            totals.seriesWithThemeSong + ' with a theme song'
+                        );
+                    }
+
+                    el.innerHTML = '';
+                    if (parts.length === 0) {
+                        el.textContent = 'Library: nothing in scope.';
+                        return;
+                    }
+
+                    var label = document.createElement('div');
+                    label.textContent = 'Library (current totals, not just the last run):';
+                    label.style.marginBottom = '0.25em';
+                    el.appendChild(label);
+
+                    parts.forEach(function (text) {
+                        var line = document.createElement('div');
+                        line.textContent = text;
+                        el.appendChild(line);
+                    });
+                }).catch(function (err) {
+                    el.textContent = 'Failed to load library totals: ' + err.message;
+                });
+            }
+
             document.querySelector('#LastRunDetailsToggle')
                 .addEventListener('click', function () {
                     var detailsEl = document.querySelector('#LastRunSummaryDetails');
@@ -477,6 +526,7 @@
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
                     loadLastRunSummary();
+                    loadLibraryTotals();
                     ApiClient.getPluginConfiguration(TrailerFetcherConfig.pluginUniqueId).then(function (config) {
                         document.querySelector('#RenameOriginal').checked = config.RenameOriginal;
                         document.querySelector('#MigrateToFolders').value = config.MigrateToFolders;

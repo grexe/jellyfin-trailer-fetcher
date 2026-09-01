@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.9.0.0"
+version: "0.10.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,29 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.10.0.0: Two new features. (1) Trailer search now prefers the item's own
+  preferred metadata language (resolved per-item via its library/server
+  configuration, via BaseItem.GetPreferredMetadataLanguage - no interactive
+  Jellyfin user session needed) before falling back to English - e.g. a
+  German-configured library searches for "trailer"/"vorschau" first. Generalizes
+  what was already a Japanese-only special case (script-detection triggering
+  "予告"/"PV" queries) into an explicit table covering ~15 languages (new
+  TrailerLanguages.cs); the trailer-keyword acceptance filter got the same words
+  added so a native-language match isn't then rejected for using its own language's
+  word. Never a hard restriction - English and the bare-title fallback are still
+  always tried afterward too. Verified the language-lookup and keyword-matching
+  logic directly (language-code resolution including "de-DE"-style fallback to the
+  primary subtag, and real foreign-language sample titles all correctly
+  recognized). (2) The settings page's Statistics section now also shows
+  library-wide totals (via a new /TrailerFetcher/LibraryTotals endpoint) - how many
+  movies/series currently have a trailer or theme song right now, computed fresh
+  each page load, not just what the last run happened to find or download.
+  Refactored the movie/series library-querying logic (previously 4 near-duplicate
+  private methods on FetchTrailersTask) into a shared LibraryItemsFinder used by
+  both the scheduled task and the new endpoint, so they can't drift out of sync on
+  what counts as "in scope".
+
+
   0.9.0.0: Theme song fetching (0.8.26.0-0.8.29.0) is now solid - marking it with a
   proper minor version bump rather than another patch-level one, since a whole new
   feature landing under a patch bump undersold it. Final fix in this run: a folder

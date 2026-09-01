@@ -310,15 +310,19 @@ public static partial class TitleMatching
         return false;
     }
 
+    // Plus every language's own native trailer word (see TrailerLanguages) - a
+    // candidate found via a native-language search stage shouldn't then get rejected
+    // here for using its own language's word instead of an English/Japanese one.
     private static readonly string[] TrailerKeywords =
     [
-        "trailer", "teaser", "vorschau", "preview", "clip", "pv", "予告", "特報", "本予告", "cm", "sub"
+        "trailer", "teaser", "vorschau", "preview", "clip", "pv", "予告", "特報", "本予告", "cm", "sub",
+        .. TrailerLanguages.AllNativeWords
     ];
 
     /// <summary>Whether a YouTube result title contains a trailer-ish keyword.</summary>
     public static bool HasTrailerKeyword(string ytTitle)
     {
         var lower = ytTitle.ToLowerInvariant();
-        return TrailerKeywords.Any(kw => lower.Contains(kw, StringComparison.Ordinal));
+        return TrailerKeywords.Any(kw => lower.Contains(kw.ToLowerInvariant(), StringComparison.Ordinal));
     }
 }

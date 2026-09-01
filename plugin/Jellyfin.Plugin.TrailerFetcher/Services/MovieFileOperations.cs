@@ -31,6 +31,21 @@ public static class MovieFileOperations
 
     private const long MinMediaSizeBytes = 1024 * 1024; // 1 MB minimum for a valid movie video file
 
+    /// <summary>
+    /// Whether a movie already lives in a folder named after its own file (the same
+    /// check <see cref="MigrateToOwnFolder"/> itself uses to decide there's nothing
+    /// to do) - shared with theme-song fetching (which requires this, to avoid
+    /// misattributing a shared folder's theme.mp3 across every movie in it) and the
+    /// settings page's library-totals count, so both agree with migration's own idea
+    /// of "already in its own folder".
+    /// </summary>
+    public static bool HasOwnFolder(string moviePath)
+    {
+        var folder = Path.GetDirectoryName(moviePath);
+        return !string.IsNullOrEmpty(folder) &&
+               string.Equals(Path.GetFileName(folder), Path.GetFileNameWithoutExtension(moviePath), StringComparison.Ordinal);
+    }
+
     /// <summary>Whether the local path is a valid main movie video file (not a trailer, sample, or extra).</summary>
     public static bool IsValidMediaFile(string localPath, out string? reason)
     {
