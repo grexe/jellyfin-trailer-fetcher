@@ -157,7 +157,10 @@ public class PluginConfiguration : BasePluginConfiguration
     /// local trailer should still be checked against <see cref="MinTrailerResolution"/>
     /// and re-searched if it falls short - e.g. one downloaded through the mweb
     /// fallback tier (used when YouTube's higher-quality formats need a PO token
-    /// this plugin doesn't provide), which can silently land as low as 360p. Off by
+    /// this plugin doesn't provide), which can silently land as low as 360p. Backs
+    /// the "Update existing trailers" checkbox, which gates the whole Audio/Video
+    /// group on the config page - the resolution and audio-preference settings only
+    /// ever matter when this is on. Off by
     /// default, since it means re-running the full search/download flow for every
     /// under-resolution trailer on every run until each one clears the bar, not just
     /// a one-time pass - more yt-dlp traffic, and so more rate-limit exposure, until
@@ -171,7 +174,10 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the minimum acceptable trailer resolution, as a frame height in
     /// pixels (e.g. 720 for "720p"), used by <see cref="UpgradeLowQualityTrailers"/>
-    /// to decide which existing trailers are worth trying to replace.
+    /// to decide which existing trailers are worth trying to replace. The config
+    /// page presents this as a fixed-step dropdown (480/720/1080/1440/2160), but any
+    /// int is accepted here - a value saved by an older version that isn't one of
+    /// those steps gets snapped to the nearest one the next time the page loads.
     /// </summary>
     public int MinTrailerResolution { get; set; }
 

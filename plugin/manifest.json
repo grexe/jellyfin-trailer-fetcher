@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.10.4.0",
+        "changelog": "Regrouped the Quality section into \"Audio/Video\": the resolution setting (now a fixed-step dropdown - 480/720/1080/1440/2160 - instead of a free-text number) and the 0.10.3.0 Audio radio switch only ever matter when the upgrade checkbox is on, so they're now visually grouped with it and grayed out until it's checked, clarifying a point that wasn't obvious before. The checkbox itself is renamed \"Update existing trailers\" (was \"Upgrade low-quality trailers\") to read naturally as the group's master switch. No behavior change - same three settings, same underlying config properties; a resolution saved by an older version that isn't one of the fixed dropdown steps is snapped to the nearest one rather than silently reverting. Also fixed the dashboard/docs logo: the prior commit replaced logo.jpg, which nothing actually references - resized it down to the 512x512 logo.png that manifest.json's imageUrl and the docs site actually use.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.10.4.0.zip",
+        "checksum": "ba965f2ad0611033cdb14a164a126e9c",
+        "timestamp": "2026-09-01T20:38:01Z"
+      },
+      {
         "version": "0.10.3.0",
         "changelog": "Redesigned the 0.10.2.0 \"Allow upgrading trailers in a different language\" checkbox per feedback that it was confusing and overly long. Replaced it with an \"Audio\" radio switch offering \"Preferred language\" (default) and \"Best quality\" - same underlying behavior (AllowUpgradeInOtherLanguage), just presented as an explicit either/or choice instead of a single long-labeled checkbox. Verified the load/save wiring and mutual exclusivity in a real browser against a local stub of the relevant markup.",
         "targetAbi": "10.11.0.0",

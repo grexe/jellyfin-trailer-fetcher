@@ -32,8 +32,8 @@
   <h2>1. Skip what already has a trailer</h2>
   <p>
     A movie or series with a local trailer file already sitting next to it — or already recognized by
-    Jellyfin's own <code>LocalTrailers</code> — is skipped, unless <a href="configuration.html">Upgrade
-    low-quality trailers</a> is on and it's below the configured minimum resolution, in which case it still
+    Jellyfin's own <code>LocalTrailers</code> — is skipped, unless <a href="configuration.html">Update
+    existing trailers</a> is on and it's below the configured minimum resolution, in which case it still
     gets a full search/download attempt (see <a href="#quality">Quality and the upgrade check</a> below).
   </p>
 
@@ -90,20 +90,20 @@
       tier can land as low as ~360p even when the first tier would have gotten much better.</li>
   </ol>
   <p>
-    With <a href="configuration.html">Upgrade low-quality trailers</a> on, an existing trailer below the
-    configured minimum gets exactly this same three-tier download attempt again. The existing file is moved
-    aside first (not deleted), both files' resolutions are probed via <code>ffprobe</code> once the new
-    attempt finishes, and the old file is only replaced if the new one is genuinely higher-resolution —
-    otherwise the original is restored untouched. A fresh attempt that lands on the same tier-3 fallback as
-    before won't beat the original, so it's kept.
+    With <a href="configuration.html">Update existing trailers</a> on, an existing trailer below the
+    configured minimum resolution gets exactly this same three-tier download attempt again. The existing
+    file is moved aside first (not deleted), both files' resolutions are probed via <code>ffprobe</code>
+    once the new attempt finishes, and the old file is only replaced if the new one is genuinely
+    higher-resolution — otherwise the original is restored untouched. A fresh attempt that lands on the
+    same tier-3 fallback as before won't beat the original, so it's kept.
   </p>
   <p>
     An upgrade re-search still searches in the item's own preferred language first by default (see
     <a href="#search">above</a>) — which can settle for a mediocre same-language result before ever trying
     English, since the search loop stops at the first successful download regardless of resolution. Set
-    <a href="configuration.html">Audio</a> to "Best quality" to have an upgrade attempt skip the
-    native-language stage entirely and go straight to English/best-available, prioritizing resolution over
-    language match for that one re-search.
+    <a href="configuration.html">Audio: preference when updating</a> to "Best quality" to have an upgrade
+    attempt skip the native-language stage entirely and go straight to English/best-available, prioritizing
+    resolution over language match for that one re-search.
   </p>
 
   <h2 id="rate-limiting">5. Rate-limit handling</h2>

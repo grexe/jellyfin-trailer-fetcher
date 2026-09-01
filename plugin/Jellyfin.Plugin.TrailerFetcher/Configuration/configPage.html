@@ -50,35 +50,25 @@
                     </div>
 
                     <div class="verticalSection">
-                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Quality</h3>
+                        <h3 style="font-size: 1.2em; font-weight: 700; margin: 1.75em 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid rgba(128, 128, 128, 0.35);">Audio/Video</h3>
                         <div style="padding-left: 1.25em;">
-                            <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="MinTrailerResolution">Minimum trailer quality (p)</label>
-                                <input id="MinTrailerResolution" name="MinTrailerResolution" type="number" is="emby-input" min="144" value="720" />
+                            <div class="selectContainer" id="MinTrailerResolutionContainer">
+                                <label class="selectLabel" for="MinTrailerResolution">Video: minimum resolution</label>
+                                <select is="emby-select" id="MinTrailerResolution" name="MinTrailerResolution" class="emby-select-withcolor emby-select">
+                                    <option value="480">480p (SD)</option>
+                                    <option value="720">720p (HD)</option>
+                                    <option value="1080">1080p (Full HD)</option>
+                                    <option value="1440">1440p (QHD)</option>
+                                    <option value="2160">2160p (4K)</option>
+                                </select>
                                 <div class="fieldDescription">
-                                    The minimum acceptable trailer resolution, e.g. 720 for "720p". Only used when "Upgrade
-                                    low-quality trailers" below is on.
+                                    The minimum acceptable trailer resolution. Only takes effect when "Update existing
+                                    trailers" below is on.
                                 </div>
                             </div>
 
-                            <div class="checkboxContainer checkboxContainer-withDescription">
-                                <label class="emby-checkbox-label">
-                                    <input id="UpgradeLowQualityTrailers" name="UpgradeLowQualityTrailers" type="checkbox" is="emby-checkbox" />
-                                    <span>Upgrade low-quality trailers</span>
-                                </label>
-                                <div class="fieldDescription">
-                                    Also re-check trailers that already exist: if one is below the minimum quality above,
-                                    search for a better one. The existing file is only ever replaced by a genuinely
-                                    higher-resolution download (both are compared after downloading) - a re-attempt that
-                                    can't beat it, or that also lands on a low-quality fallback, leaves the original
-                                    untouched. Off by default: this means re-running the full search/download flow for
-                                    every under-quality trailer on every run until it clears the bar, not just once - more
-                                    yt-dlp traffic, and so more rate-limit exposure, until the library catches up.
-                                </div>
-                            </div>
-
-                            <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused">Audio</label>
+                            <div class="inputContainer" id="AudioUpgradePreferenceContainer">
+                                <label class="inputLabel inputLabelUnfocused">Audio: preference when updating</label>
                                 <div style="margin: 0.5em 0;">
                                     <label style="margin-right: 1.5em; cursor: pointer;">
                                         <input type="radio" name="AudioUpgradePreference" id="AudioUpgradePreferLanguage" value="language" style="margin-right: 0.4em; vertical-align: middle;" />
@@ -90,14 +80,31 @@
                                     </label>
                                 </div>
                                 <div class="fieldDescription">
-                                    Which matters more when "Upgrade low-quality trailers" finds a replacement
-                                    candidate. Preferred language searches in the item's own language first, same as
-                                    any other search - which can settle for a mediocre same-language result (the
-                                    search stops at the first successful download, regardless of resolution) without
-                                    ever trying English, which often has a genuinely higher-quality upload available.
-                                    Best quality skips the native-language search stage for an upgrade attempt
-                                    specifically, going straight to English/best-available - prioritizing resolution
-                                    over language match for that one re-search.
+                                    Which matters more when a replacement is found. Preferred language searches in
+                                    the item's own language first, same as any other search - which can settle for a
+                                    mediocre same-language result (the search stops at the first successful download,
+                                    regardless of resolution) without ever trying English, which often has a
+                                    genuinely higher-quality upload available. Best quality skips the native-language
+                                    search stage, going straight to English/best-available - prioritizing resolution
+                                    over language match. Only takes effect when "Update existing trailers" below is
+                                    on.
+                                </div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="UpgradeLowQualityTrailers" name="UpgradeLowQualityTrailers" type="checkbox" is="emby-checkbox" />
+                                    <span>Update existing trailers</span>
+                                </label>
+                                <div class="fieldDescription">
+                                    Also re-checks trailers that already exist against the resolution and audio
+                                    preference above, searching for a better replacement if one falls short. The
+                                    existing file is only ever replaced by a genuine improvement - both are compared
+                                    after downloading, and a re-attempt that can't beat the original leaves it
+                                    untouched. Off by default: this means re-running the full search/download flow
+                                    for every under-quality trailer on every run until it clears the bar, not just
+                                    once - more yt-dlp traffic, and so more rate-limit exposure, until the library
+                                    catches up.
                                 </div>
                             </div>
                         </div>
@@ -360,6 +367,30 @@
                 var enabled = document.querySelector('#RetryOnRateLimit').checked;
                 document.querySelector('#RateLimitRetryDelayMinutes').disabled = !enabled;
                 document.querySelector('#RateLimitRetryDelayContainer').style.opacity = enabled ? '' : '0.45';
+            }
+
+            function updateAudioVideoUpgradeSettingsEnabled() {
+                // Same dimming approach as updateRateLimitRetryDelayEnabled above -
+                // resolution and audio preference only ever matter when "Update
+                // existing trailers" is on, so they're grayed out otherwise.
+                var enabled = document.querySelector('#UpgradeLowQualityTrailers').checked;
+                document.querySelector('#MinTrailerResolution').disabled = !enabled;
+                document.querySelector('#MinTrailerResolutionContainer').style.opacity = enabled ? '' : '0.45';
+                document.querySelector('#AudioUpgradePreferLanguage').disabled = !enabled;
+                document.querySelector('#AudioUpgradePreferQuality').disabled = !enabled;
+                document.querySelector('#AudioUpgradePreferenceContainer').style.opacity = enabled ? '' : '0.45';
+            }
+
+            function setMinTrailerResolutionSelect(value) {
+                // Older versions let this be any number via a free-text input; snap a
+                // saved value that isn't one of the fixed dropdown steps to the
+                // nearest one, rather than silently reverting to the first option.
+                var select = document.querySelector('#MinTrailerResolution');
+                var options = Array.prototype.map.call(select.options, function (o) { return parseInt(o.value, 10); });
+                var closest = options.indexOf(value) !== -1 ? value : options.reduce(function (best, o) {
+                    return Math.abs(o - value) < Math.abs(best - value) ? o : best;
+                }, options[0]);
+                select.value = String(closest);
             }
 
             function loadLibraries(selectedIds) {
@@ -633,6 +664,9 @@
             document.querySelector('#RetryOnRateLimit')
                 .addEventListener('change', updateRateLimitRetryDelayEnabled);
 
+            document.querySelector('#UpgradeLowQualityTrailers')
+                .addEventListener('change', updateAudioVideoUpgradeSettingsEnabled);
+
             document.querySelector('#StatsTabLastRun')
                 .addEventListener('click', function () {
                     setActiveStatsTab('lastRun');
@@ -658,7 +692,8 @@
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         document.querySelector('#UpgradeLowQualityTrailers').checked = config.UpgradeLowQualityTrailers;
                         document.querySelector(config.AllowUpgradeInOtherLanguage ? '#AudioUpgradePreferQuality' : '#AudioUpgradePreferLanguage').checked = true;
-                        document.querySelector('#MinTrailerResolution').value = config.MinTrailerResolution;
+                        setMinTrailerResolutionSelect(config.MinTrailerResolution);
+                        updateAudioVideoUpgradeSettingsEnabled();
                         document.querySelector('#FetchThemeSongs').checked = config.FetchThemeSongs;
                         document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
                         document.querySelector('#RetryOnRateLimit').checked = config.RetryOnRateLimit;
