@@ -1,7 +1,7 @@
 ---
 name: "Trailer Fetcher"
 guid: "03385b47-ccda-4a9e-86a2-c0b1f80fa332"
-version: "0.10.1.0"
+version: "0.10.2.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Finds and downloads missing local trailers for movies and TV series from YouTube via yt-dlp."
@@ -18,6 +18,20 @@ owner: "grexe"
 artifacts:
 - "Jellyfin.Plugin.TrailerFetcher.dll"
 changelog: >
+  0.10.2.0: Added an "Allow upgrading trailers in a different language" setting,
+  next to "Upgrade low-quality trailers" - the language equivalent of the
+  resolution check, in a sense. By default, an upgrade re-search still searches in
+  the item's own preferred language first, same as any other search (0.10.0.0) -
+  but since the search loop stops at the first successful download regardless of
+  resolution, that can mean settling for a mediocre same-language result without
+  ever trying English, which often has a genuinely higher-quality upload available.
+  Turning this on skips the native-language search stage for an upgrade attempt
+  specifically (TrailerSources.Build's new skipNativeLanguage parameter), going
+  straight to English/best-available - prioritizing resolution over language match
+  for that one re-search. Off by default, matching "Upgrade low-quality trailers"
+  itself.
+
+
   0.10.1.0: Redesigned the Statistics section's library-totals display per feedback
   that the previous wording needed too much explanation to be self-evident. Replaced
   the plain-text "Library (current totals, not just the last run)" line with a

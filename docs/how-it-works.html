@@ -44,7 +44,7 @@
     matching needed.
   </p>
 
-  <h2>3. Fall back to a multi-stage YouTube search</h2>
+  <h2 id="search">3. Fall back to a multi-stage YouTube search</h2>
   <p>
     If there's no official trailer link, or it fails to download, a series of increasingly broad YouTube
     searches are tried in order (title + year, title alone, etc.) until one produces a match. The item's own
@@ -96,6 +96,14 @@
     attempt finishes, and the old file is only replaced if the new one is genuinely higher-resolution —
     otherwise the original is restored untouched. A fresh attempt that lands on the same tier-3 fallback as
     before won't beat the original, so it's kept.
+  </p>
+  <p>
+    An upgrade re-search still searches in the item's own preferred language first by default (see
+    <a href="#search">above</a>) — which can settle for a mediocre same-language result before ever trying
+    English, since the search loop stops at the first successful download regardless of resolution. Turn on
+    <a href="configuration.html">Allow upgrading trailers in a different language</a> to have an upgrade
+    attempt skip the native-language stage entirely and go straight to English/best-available, prioritizing
+    resolution over language match for that one re-search.
   </p>
 
   <h2 id="rate-limiting">5. Rate-limit handling</h2>

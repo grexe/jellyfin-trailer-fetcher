@@ -53,6 +53,7 @@ public class PluginConfiguration : BasePluginConfiguration
         RateLimitRetryDelayMinutes = 65;
         UpgradeLowQualityTrailers = false;
         MinTrailerResolution = 720;
+        AllowUpgradeInOtherLanguage = false;
         FetchThemeSongs = false;
     }
 
@@ -173,6 +174,21 @@ public class PluginConfiguration : BasePluginConfiguration
     /// to decide which existing trailers are worth trying to replace.
     /// </summary>
     public int MinTrailerResolution { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether an <see cref="UpgradeLowQualityTrailers"/>
+    /// re-search is allowed to accept a replacement in a different language than the
+    /// item's own preferred one - the audio-track equivalent of
+    /// <see cref="MinTrailerResolution"/>'s resolution check, in a sense: off by
+    /// default, an upgrade attempt searches in the same native-language-first order
+    /// as any other search, which can settle for a mediocre native-language result
+    /// (the search loop stops at the first successful download, regardless of
+    /// resolution) without ever trying the English stage that often has a genuinely
+    /// higher-quality upload available. On, an upgrade attempt skips the
+    /// native-language stages entirely and searches in English/best-available
+    /// directly, prioritizing resolution over language match for that one re-search.
+    /// </summary>
+    public bool AllowUpgradeInOtherLanguage { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether to also fetch a local theme song

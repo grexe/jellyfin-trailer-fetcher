@@ -368,7 +368,7 @@ public class FetchTrailersTask : IScheduledTask
                 }
             }
 
-            var sourcesToTry = TrailerSources.Build(movie, titleVariants, year);
+            var sourcesToTry = TrailerSources.Build(movie, titleVariants, year, skipNativeLanguage: upgradeBackupPath is not null && config.AllowUpgradeInOtherLanguage);
 
             // "[DRY-RUN] " is baked into the template text itself (per branch) rather
             // than passed as a {Prefix} value - splicing a text fragment in through a
@@ -839,7 +839,7 @@ public class FetchTrailersTask : IScheduledTask
             return;
         }
 
-        var sourcesToTry = TrailerSources.Build(series, titleVariants, year);
+        var sourcesToTry = TrailerSources.Build(series, titleVariants, year, skipNativeLanguage: upgradeBackupPath is not null && config.AllowUpgradeInOtherLanguage);
         var fetchingTemplate = config.DryRun
             ? "  > [DRY-RUN] Fetching trailer via {Kind} ({Source})..."
             : "  > Fetching trailer via {Kind} ({Source})...";

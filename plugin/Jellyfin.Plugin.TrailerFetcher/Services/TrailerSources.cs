@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MediaBrowser.Controller.Entities;
@@ -15,8 +16,23 @@ namespace Jellyfin.Plugin.TrailerFetcher.Services;
 /// </summary>
 public static class TrailerSources
 {
-    /// <summary>Build the ordered list of sources: direct YouTube URLs first, then "ytsearch5:&lt;query&gt;" strings.</summary>
-    public static List<string> Build(BaseItem item, List<string> titleVariants, string? year)
+    /// <summary>
+    /// Build the ordered list of sources: direct YouTube URLs first, then
+    /// "ytsearch5:&lt;query&gt;" strings.
+    /// </summary>
+    /// <param name="item">The movie/series to build sources for.</param>
+    /// <param name="titleVariants">Resolved title variants to search with.</param>
+    /// <param name="year">The item's release year, if known.</param>
+    /// <param name="skipNativeLanguage">
+    /// Skips the native-language (and non-Latin-title) query stages entirely, going
+    /// straight to English/bare-title queries - used for an <em>upgrade</em> re-search
+    /// specifically (see <see cref="Configuration.PluginConfiguration.AllowUpgradeInOtherLanguage"/>),
+    /// where the search loop otherwise stops at the first successful download
+    /// regardless of resolution: a native-language stage succeeding first, even at
+    /// low quality, would mean the English stage - which often has a genuinely
+    /// higher-quality upload available - never even gets tried.
+    /// </param>
+    public static List<string> Build(BaseItem item, List<string> titleVariants, string? year, bool skipNativeLanguage = false)
     {
         var sourcesToTry = new List<string>();
 
@@ -39,13 +55,13 @@ public static class TrailerSources
         // hard restriction: English and the bare-title fallback below are still
         // always tried afterward too, so a missing/unhelpful native-language stage
         // never turns "no trailer found" on its own.
-        var nativeWords = TrailerLanguages.GetNativeTrailerWords(item.GetPreferredMetadataLanguage());
+        var nativeWords = skipNativeLanguage ? Array.Empty<string>() : TrailerLanguages.GetNativeTrailerWords(item.GetPreferredMetadataLanguage());
 
         var queries = new List<string>();
         foreach (var cand in titleVariants)
         {
             var (cleanCand, mainCand, _) = TitleMatching.ExtractMainTitle(cand);
-            var nonLatin = TitleMatching.IsNonLatin(cleanCand);
+            var nonLatin = !skipNativeLanguage && TitleMatching.IsNonLatin(cleanCand);
 
             foreach (var word in nativeWords)
             {

@@ -76,6 +76,23 @@
                                     yt-dlp traffic, and so more rate-limit exposure, until the library catches up.
                                 </div>
                             </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="AllowUpgradeInOtherLanguage" name="AllowUpgradeInOtherLanguage" type="checkbox" is="emby-checkbox" />
+                                    <span>Allow upgrading trailers in a different language</span>
+                                </label>
+                                <div class="fieldDescription">
+                                    The language equivalent of the resolution check above, for
+                                    "Upgrade low-quality trailers". Off by default: an upgrade attempt searches in the
+                                    item's own preferred language first, same as any other search - which can settle for
+                                    a mediocre same-language result (the search stops at the first successful download,
+                                    regardless of resolution) without ever trying English, which often has a genuinely
+                                    higher-quality upload available. Turning this on skips the native-language search
+                                    stage for an upgrade attempt specifically, going straight to English/best-available -
+                                    prioritizing resolution over language match for that one re-search.
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -633,6 +650,7 @@
                         document.querySelector('#VerboseLogging').checked = config.VerboseLogging;
                         document.querySelector('#MaxTrailerDurationSeconds').value = config.MaxTrailerDurationSeconds;
                         document.querySelector('#UpgradeLowQualityTrailers').checked = config.UpgradeLowQualityTrailers;
+                        document.querySelector('#AllowUpgradeInOtherLanguage').checked = config.AllowUpgradeInOtherLanguage;
                         document.querySelector('#MinTrailerResolution').value = config.MinTrailerResolution;
                         document.querySelector('#FetchThemeSongs').checked = config.FetchThemeSongs;
                         document.querySelector('#RequestDelaySeconds').value = config.RequestDelaySeconds;
@@ -711,6 +729,7 @@
                         config.VerboseLogging = document.querySelector('#VerboseLogging').checked;
                         config.MaxTrailerDurationSeconds = parseInt(document.querySelector('#MaxTrailerDurationSeconds').value, 10);
                         config.UpgradeLowQualityTrailers = document.querySelector('#UpgradeLowQualityTrailers').checked;
+                        config.AllowUpgradeInOtherLanguage = document.querySelector('#AllowUpgradeInOtherLanguage').checked;
                         config.MinTrailerResolution = parseInt(document.querySelector('#MinTrailerResolution').value, 10);
                         config.FetchThemeSongs = document.querySelector('#FetchThemeSongs').checked;
                         config.RequestDelaySeconds = parseInt(document.querySelector('#RequestDelaySeconds').value, 10);

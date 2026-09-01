@@ -92,6 +92,19 @@
         pass or two after a big library import, then switching back off.
       </p>
     </div>
+
+    <div class="setting">
+      <span class="name">Allow upgrading trailers in a different language</span><span class="default">default: off</span>
+      <p>
+        The language equivalent of the resolution check above. By default, an upgrade attempt searches in
+        the item's own preferred language first, the same as any other search (see
+        <a href="how-it-works.html#search">How It Works</a>) — but the search stops at the first
+        successful download regardless of resolution, so it can settle for a mediocre same-language result
+        without ever trying English, which often has a genuinely higher-quality upload available. Turning
+        this on skips the native-language search stage for an upgrade attempt specifically, going straight
+        to English/best-available — prioritizing resolution over language match for that one re-search.
+      </p>
+    </div>
   </div>
 
   <div class="setting-group">

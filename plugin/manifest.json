@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.10.2.0",
+        "changelog": "Added an \"Allow upgrading trailers in a different language\" setting, next to \"Upgrade low-quality trailers\" - the language equivalent of the resolution check, in a sense. By default, an upgrade re-search still searches in the item's own preferred language first, same as any other search (0.10.0.0) - but since the search loop stops at the first successful download regardless of resolution, that can mean settling for a mediocre same-language result without ever trying English, which often has a genuinely higher-quality upload available. Turning this on skips the native-language search stage for an upgrade attempt specifically (TrailerSources.Build's new skipNativeLanguage parameter), going straight to English/best-available - prioritizing resolution over language match for that one re-search. Off by default, matching \"Upgrade low-quality trailers\" itself.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.10.2.0.zip",
+        "checksum": "942860270827e6389b3d6fecbedf8feb",
+        "timestamp": "2026-09-01T20:07:25Z"
+      },
+      {
         "version": "0.10.1.0",
         "changelog": "Redesigned the Statistics section's library-totals display per feedback that the previous wording needed too much explanation to be self-evident. Replaced the plain-text \"Library (current totals, not just the last run)\" line with a proper table under two tabs - \"Last run\" (Movies/TV series as two rows, from that run's own numbers) and \"Overall\" (one row per actual Jellyfin library, always every library regardless of current scan scope, not just the movie/series totals from before) - both sharing the same Library/Items/Trailers/Theme songs columns so switching tabs compares like with like. /TrailerFetcher/LibraryTotals now returns one row per library instead of a flat movies/series total, resolved via LibraryItemsFinder scoped to each library individually. Verified both tabs and the toggle behavior in a real browser against a local stub of the actual configPage.html.",
         "targetAbi": "10.11.0.0",
