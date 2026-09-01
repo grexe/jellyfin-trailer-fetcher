@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.10.3.0",
+        "changelog": "Redesigned the 0.10.2.0 \"Allow upgrading trailers in a different language\" checkbox per feedback that it was confusing and overly long. Replaced it with an \"Audio\" radio switch offering \"Preferred language\" (default) and \"Best quality\" - same underlying behavior (AllowUpgradeInOtherLanguage), just presented as an explicit either/or choice instead of a single long-labeled checkbox. Verified the load/save wiring and mutual exclusivity in a real browser against a local stub of the relevant markup.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.10.3.0.zip",
+        "checksum": "ab7a086e0d9faacee63adf26ad54718d",
+        "timestamp": "2026-09-01T20:19:11Z"
+      },
+      {
         "version": "0.10.2.0",
         "changelog": "Added an \"Allow upgrading trailers in a different language\" setting, next to \"Upgrade low-quality trailers\" - the language equivalent of the resolution check, in a sense. By default, an upgrade re-search still searches in the item's own preferred language first, same as any other search (0.10.0.0) - but since the search loop stops at the first successful download regardless of resolution, that can mean settling for a mediocre same-language result without ever trying English, which often has a genuinely higher-quality upload available. Turning this on skips the native-language search stage for an upgrade attempt specifically (TrailerSources.Build's new skipNativeLanguage parameter), going straight to English/best-available - prioritizing resolution over language match for that one re-search. Off by default, matching \"Upgrade low-quality trailers\" itself.",
         "targetAbi": "10.11.0.0",

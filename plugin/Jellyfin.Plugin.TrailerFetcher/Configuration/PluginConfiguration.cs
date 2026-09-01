@@ -177,16 +177,16 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether an <see cref="UpgradeLowQualityTrailers"/>
-    /// re-search is allowed to accept a replacement in a different language than the
-    /// item's own preferred one - the audio-track equivalent of
-    /// <see cref="MinTrailerResolution"/>'s resolution check, in a sense: off by
-    /// default, an upgrade attempt searches in the same native-language-first order
-    /// as any other search, which can settle for a mediocre native-language result
-    /// (the search loop stops at the first successful download, regardless of
-    /// resolution) without ever trying the English stage that often has a genuinely
-    /// higher-quality upload available. On, an upgrade attempt skips the
-    /// native-language stages entirely and searches in English/best-available
-    /// directly, prioritizing resolution over language match for that one re-search.
+    /// re-search should prioritize resolution over the item's preferred language - the
+    /// audio-track equivalent of <see cref="MinTrailerResolution"/>'s resolution check,
+    /// in a sense. Backs the "Audio" radio switch on the config page ("Preferred
+    /// language" vs "Best quality"). False (preferred language, the default) searches
+    /// in the same native-language-first order as any other search, which can settle
+    /// for a mediocre native-language result (the search loop stops at the first
+    /// successful download, regardless of resolution) without ever trying the English
+    /// stage that often has a genuinely higher-quality upload available. True (best
+    /// quality) skips the native-language stages entirely and searches in
+    /// English/best-available directly for that one re-search.
     /// </summary>
     public bool AllowUpgradeInOtherLanguage { get; set; }
 
