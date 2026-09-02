@@ -519,17 +519,24 @@ public class FetchTrailersTask : IScheduledTask
 
     /// <summary>
     /// Tries each source in order, keeping the highest-resolution successful download
-    /// found across the whole attempt - a later source that can't beat what's already
-    /// been downloaded this run is discarded and the previous (better) result is
-    /// restored, the same "only keep a genuine improvement" rule
+    /// found across the whole attempt - the same "only keep a genuine improvement" rule
     /// <see cref="ResolveTrailerUpgrade"/> applies when comparing against a
-    /// pre-existing trailer. Stops as soon as a result meets
-    /// <see cref="PluginConfiguration.MinTrailerResolution"/>, or once every source has
-    /// been tried. This runs the same way regardless of whether the item already had a
-    /// trailer before this run - resolution and audio-language preference are meant to
-    /// be honored on every search, not just an upgrade re-check, so a fresh item
-    /// doesn't need a later "Update existing trailers" run just to reach quality it
-    /// could have gotten immediately. Shared between movies and series.
+    /// pre-existing trailer. Each candidate downloads to a scratch path first and is
+    /// only moved into <paramref name="trailerFilename"/> - the live path Jellyfin's own
+    /// file-watcher/metadata pipeline monitors - via a single atomic move once it's
+    /// confirmed as the new best; a candidate that isn't better is discarded without
+    /// trailerFilename ever being touched. Confirmed live: writing every attempt
+    /// directly to trailerFilename (an earlier version of this method) made Jellyfin's
+    /// own background metadata refresh race an ffprobe against ours mid-write, and
+    /// against the gap a delete-then-restore briefly left, producing real "ffprobe
+    /// failed - streams and format are both null" errors in Jellyfin's own log. Stops
+    /// as soon as a result meets <see cref="PluginConfiguration.MinTrailerResolution"/>,
+    /// or once every source has been tried. This runs the same way regardless of
+    /// whether the item already had a trailer before this run - resolution and
+    /// audio-language preference are meant to be honored on every search, not just an
+    /// upgrade re-check, so a fresh item doesn't need a later "Update existing
+    /// trailers" run just to reach quality it could have gotten immediately. Shared
+    /// between movies and series.
     /// </summary>
     /// <returns>Whether a trailer was saved this run, and its probed height if known.</returns>
     private async Task<(bool Success, int? Height)> DownloadBestAsync(
@@ -589,39 +596,26 @@ public class FetchTrailersTask : IScheduledTask
                 continue;
             }
 
-            // A previous source already produced a kept result this run - set it aside
-            // so this attempt can't clobber it before the two are compared. If that
-            // can't be done safely (e.g. the file is locked), stop here rather than
-            // risk the existing kept result - it's already the best found so far.
-            string? priorAttemptBackup = null;
-            if (success)
-            {
-                priorAttemptBackup = trailerFilename + ".prevattempt";
-                try
-                {
-                    File.Move(trailerFilename, priorAttemptBackup, overwrite: true);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _logger.LogWarning("  > Could not set aside the current best trailer attempt, stopping search here: {Error}", ex.Message);
-                    break;
-                }
-            }
-
-            var attemptSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, trailerFilename, cancellationToken).ConfigureAwait(false);
+            // Downloaded to the OS temp directory, never anywhere inside the watched
+            // media library - Jellyfin's own file-watcher/metadata pipeline monitors
+            // that folder, and racing its own ffprobe against ours mid-write (or
+            // against the brief gap a delete-then-restore would leave) produced real
+            // "ffprobe failed - streams and format are both null" errors in Jellyfin's
+            // own log, confirmed live. A rejected candidate never touches the library
+            // at all now; trailerFilename is only ever touched once, via File.Move (a
+            // same-filesystem rename when possible, a transparent copy+delete
+            // otherwise - .NET picks whichever applies), at the exact moment a
+            // candidate is confirmed kept.
+            var candidatePath = Path.Combine(Path.GetTempPath(), $"trailer-fetcher-candidate-{Guid.NewGuid():N}{Path.GetExtension(trailerFilename)}");
+            var attemptSuccess = await ytDlp.DownloadAsync(accepted.WebpageUrl, candidatePath, cancellationToken).ConfigureAwait(false);
             if (!attemptSuccess)
             {
-                if (priorAttemptBackup is not null && !TryRestorePriorAttempt(priorAttemptBackup, trailerFilename))
-                {
-                    break;
-                }
-
                 continue;
             }
 
             var attemptHeight = string.IsNullOrEmpty(ffprobePath)
                 ? null
-                : await VideoProbe.GetHeightAsync(ffprobePath, trailerFilename, _logger, cancellationToken).ConfigureAwait(false);
+                : await VideoProbe.GetHeightAsync(ffprobePath, candidatePath, _logger, cancellationToken).ConfigureAwait(false);
 
             var isBetter = bestHeight is null || (attemptHeight is not null && attemptHeight.Value > bestHeight.Value);
             if (!isBetter)
@@ -636,34 +630,27 @@ public class FetchTrailersTask : IScheduledTask
 
                 try
                 {
-                    File.Delete(trailerFilename);
+                    File.Delete(candidatePath);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    _logger.LogWarning("  > Could not discard a non-improving trailer attempt {Path}: {Error}", trailerFilename, ex.Message);
-                }
-
-                if (priorAttemptBackup is not null && !TryRestorePriorAttempt(priorAttemptBackup, trailerFilename))
-                {
-                    break;
+                    _logger.LogWarning("  > Could not discard a non-improving trailer attempt {Path}: {Error}", candidatePath, ex.Message);
                 }
 
                 continue;
             }
 
-            if (priorAttemptBackup is not null)
+            try
             {
-                try
-                {
-                    File.Delete(priorAttemptBackup);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Non-fatal: the better attempt is already saved at trailerFilename,
-                    // so the item is left with a valid trailer either way - a lingering
-                    // ".prevattempt" file is just clutter.
-                    _logger.LogWarning("  > Could not remove a superseded trailer attempt {Path}: {Error}", priorAttemptBackup, ex.Message);
-                }
+                File.Move(candidatePath, trailerFilename, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The best candidate found so far (if any) is still safely at
+                // trailerFilename, untouched - only this newer, better one couldn't be
+                // put in place, so stop rather than lose track of what's actually kept.
+                _logger.LogWarning("  > Could not put a better trailer attempt in place, stopping search here: {Error}", ex.Message);
+                break;
             }
 
             success = true;
@@ -688,28 +675,6 @@ public class FetchTrailersTask : IScheduledTask
         }
 
         return (success, bestHeight);
-    }
-
-    /// <summary>
-    /// Restores a candidate that was set aside by <see cref="DownloadBestAsync"/> back
-    /// to its normal filename, e.g. after a later attempt failed or didn't turn out
-    /// better. Non-fatal on failure (e.g. the file is now locked) - just logs and
-    /// reports it, so the caller can stop searching for more rather than continue in
-    /// an inconsistent state.
-    /// </summary>
-    /// <returns>Whether the restore succeeded.</returns>
-    private bool TryRestorePriorAttempt(string priorAttemptBackup, string trailerFilename)
-    {
-        try
-        {
-            File.Move(priorAttemptBackup, trailerFilename, overwrite: true);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning("  > Could not restore the previous trailer attempt from {Path}, stopping search here: {Error}", priorAttemptBackup, ex.Message);
-            return false;
-        }
     }
 
     /// <summary>
@@ -763,32 +728,47 @@ public class FetchTrailersTask : IScheduledTask
 
     private void RestoreUpgradeBackup(string trailerFilename, string existingTrailerPath, string upgradeBackupPath)
     {
+        // Restore the original first, before cleaning up anything left under a
+        // different name - otherwise, for that different-name case, there'd be a
+        // moment where neither the original nor the rejected attempt exists under any
+        // name Jellyfin recognizes, which its own file-watcher could race against (the
+        // same class of issue DownloadBestAsync avoids for its own per-candidate
+        // churn).
         try
         {
-            // The new attempt may have saved under a different filename than the old
-            // one (e.g. the existing file used a legacy "trailer.mp4" name while the
-            // current naming convention would produce "<Title>-trailer.mp4") - clean
-            // it up separately rather than relying on File.Move's overwrite to do it,
-            // which only replaces the destination path, not an unrelated stray file.
-            if (File.Exists(trailerFilename) && !string.Equals(trailerFilename, existingTrailerPath, StringComparison.Ordinal))
-            {
-                File.Delete(trailerFilename);
-            }
-
             File.Move(upgradeBackupPath, existingTrailerPath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // The backup is still sitting at upgradeBackupPath either way (Jellyfin's
-            // local-extras resolver won't recognize its ".upgrading" name as a
-            // trailer, but the file itself isn't lost) - worth an ERROR since this
-            // leaves the movie/series without a *recognized* trailer until it's
-            // manually renamed back or the next run's upgrade attempt succeeds.
+            // The backup is still sitting at upgradeBackupPath (Jellyfin's local-extras
+            // resolver won't recognize its ".upgrading" name as a trailer, but the file
+            // itself isn't lost) - worth an ERROR since this leaves the movie/series
+            // without a *recognized* trailer until it's manually renamed back or the
+            // next run's upgrade attempt succeeds.
             _logger.LogError(
                 "  > Could not restore the existing trailer backup from {Backup} to {Path}: {Error}",
                 upgradeBackupPath,
                 existingTrailerPath,
                 ex.Message);
+            return;
+        }
+
+        // The rejected attempt may have saved under a different filename than the
+        // original (e.g. a legacy "trailer.mp4" name vs. the current
+        // "<Title>-trailer.mp4" convention) - clean it up separately, since the
+        // restore above only replaced existingTrailerPath, not this unrelated stray
+        // file. Non-fatal: the original is already safely restored either way, a
+        // lingering stray file is just clutter.
+        if (File.Exists(trailerFilename) && !string.Equals(trailerFilename, existingTrailerPath, StringComparison.Ordinal))
+        {
+            try
+            {
+                File.Delete(trailerFilename);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning("  > Could not remove a superseded trailer attempt {Path}: {Error}", trailerFilename, ex.Message);
+            }
         }
     }
 

@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/images/logo.png",
     "versions": [
       {
+        "version": "0.13.0.1",
+        "changelog": "Fixed a real bug found from a live log: the 0.11.0.0 resolution-seeking search loop wrote every candidate attempt directly to the trailer's live filename inside the watched media library - including ones about to be discarded moments later - and the discard path deleted that file then separately restored the previous one, briefly leaving neither present under any recognized name. Jellyfin's own background metadata refresh raced this and produced real \"ffprobe failed - streams and format are both null\" errors in Jellyfin's own log. Every candidate now downloads to the OS temp directory instead, entirely outside the watched library - a rejected candidate never touches it at all, and the live filename is only touched once, when a candidate is confirmed as the new best. Applied the same fix to the final upgrade-vs-original restore path for consistency. Theme song downloads were already safe - that path never writes a since-discarded attempt to its live destination.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/grexe/jellyfin-trailer-fetcher/main/plugin/dist/Jellyfin.Plugin.TrailerFetcher_0.13.0.1.zip",
+        "checksum": "b15fae884521b56292ddc1fe39c12e3b",
+        "timestamp": "2026-09-02T18:33:13Z"
+      },
+      {
         "version": "0.13.0.0",
         "changelog": "Extends 0.12.0.0's \"Rename series folders\" to also rename season subfolders to Jellyfin's own canonical \"Season NN\" naming (\"Specials\" for season 0) - based on each season's own resolved number from Jellyfin's Season entity (its IndexNumber), the same reliable matching that already finds the right trailer, not parsed from the subfolder's own (possibly messy) name. Only the subfolder itself is renamed; episode files inside are never touched or moved. Deliberately not going further into per-episode renaming - that's a meaningfully higher-risk operation (matching every file to the correct episode across specials, multi-episode files, and non-standard/absolute numbering) that needs its own dedicated design pass.",
         "targetAbi": "10.11.0.0",
